@@ -29,8 +29,8 @@ class BroadcastState(StatesGroup):
 # 5. Klaviatura funksiyasi
 def admin_keyboard():
     buttons = [
-        [KeyboardButton(text="🏪 Do'kon qo'shish"), KeyboardButton(text="🔍 Do'konni qidirish")],
-        [KeyboardButton(text="📝 Do'konlar ro'yxati"), KeyboardButton(text="📊 Statistika")],
+        [KeyboardButton(text="🏪 Maskan qo'shish"), KeyboardButton(text="🔍 Maskanni qidirish")],
+        [KeyboardButton(text="📝 Maskanlar ro'yxati"), KeyboardButton(text="📊 Statistika")],
         [KeyboardButton(text="📢 Reklama yuborish")]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
@@ -47,10 +47,10 @@ def cancel_keyboard():
     ], resize_keyboard=True)
 
 # 6. Admin Handlerlar
-@admin_router.message(F.text == "🏪 Do'kon qo'shish")
+@admin_router.message(F.text == "🏪 Maskan qo'shish")
 async def start_shop_reg(message: Message, state: FSMContext):
     await state.set_state(ShopRegistration.name)
-    await message.answer("🏪 Do'kon nomini kiriting:", reply_markup=cancel_keyboard())
+    await message.answer("🏪 Maskan nomini kiriting:", reply_markup=cancel_keyboard())
 
 @admin_router.message(F.text == "🚫 Bekor qilish")
 async def cancel_handler(message: Message, state: FSMContext):
@@ -64,7 +64,7 @@ async def cancel_handler(message: Message, state: FSMContext):
 async def process_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(ShopRegistration.owner_id)
-    await message.answer("Do'kon egasining Telegram ID raqamini yuboring:")
+    await message.answer("Maskan egasining Telegram ID raqamini yuboring:")
 
 @admin_router.message(ShopRegistration.owner_id)
 async def process_owner_id(message: Message, state: FSMContext):
@@ -72,13 +72,13 @@ async def process_owner_id(message: Message, state: FSMContext):
         return await message.answer("ID faqat raqamlardan iborat bo'lishi kerak!")
     await state.update_data(owner_id=int(message.text))
     await state.set_state(ShopRegistration.phone)
-    await message.answer("Do'konchi telefon raqamini kiriting:")
+    await message.answer("Maskanchi telefon raqamini kiriting:")
 
 @admin_router.message(ShopRegistration.phone)
 async def process_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.text)
     await state.set_state(ShopRegistration.address)
-    await message.answer("Do'kon manzilini kiriting:")
+    await message.answer("Maskan manzilini kiriting:")
 
 # 1. Manzil kiritilgandan keyin darrov bazaga yozmaymiz, tekshirishga chiqaramiz
 @admin_router.message(ShopRegistration.address)
@@ -95,7 +95,7 @@ async def shop_address(message: Message, state: FSMContext):
     ])
     
     confirm_text = (
-        f"📝 <b>Yangi do'kon ma'lumotlari:</b>\n\n"
+        f"📝 <b>Yangi Maskan ma'lumotlari:</b>\n\n"
         f"🏪 Nomi: <b>{data['name']}</b>\n"
         f"🆔 Egasi (ID): <code>{data['owner_id']}</code>\n"
         f"📞 Tel: <b>{data['phone']}</b>\n"
@@ -111,7 +111,7 @@ async def shop_address(message: Message, state: FSMContext):
 async def shop_confirm_callback(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "confirm_shop_no":
         await state.clear()
-        await callback.message.edit_text("❌ Do'kon qo'shish bekor qilindi.")
+        await callback.message.edit_text("❌ Maskan qo'shish bekor qilindi.")
         return await callback.answer()
 
     # Tasdiqlash bosilganda
@@ -127,17 +127,17 @@ async def shop_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         conn.commit()
         conn.close()
         
-        await callback.message.edit_text(f"✅ <b>{data['name']}</b> do'koni muvaffaqiyatli qo'shildi!")
+        await callback.message.edit_text(f"✅ <b>{data['name']}</b> Maskani muvaffaqiyatli qo'shildi!")
         
-        # Do'kon egasiga xabar yuborish
+        # Maskan egasiga xabar yuborish
         try: # ICHKI TRY (Xabar yuborish uchun)
             await callback.bot.send_message(
                 chat_id=data['owner_id'], 
-                text=f"🎉 Tabriklaymiz! {data['name']} do'koni tizimga qo'shildi.\n/start tugmasini bosing."
+                text=f"🎉 Tabriklaymiz! {data['name']} Maskani tizimga qo'shildi.\n/start tugmasini bosing."
             )
         except Exception as e:
             print(f"Xabar yuborishda xato: {e}")
-            await callback.message.answer("⚠️ Do'konchiga xabar yetib bormadi.")
+            await callback.message.answer("⚠️ Maskanchiga xabar yetib bormadi.")
 
     except Exception as db_error: # TASHQI TRY uchun EXCEPT
         print(f"Baza xatosi: {db_error}")
@@ -147,8 +147,8 @@ async def shop_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         await state.clear()
         await callback.answer()
 
-# 2. DO'KONLAR RO'YXATI
-@admin_router.message(F.text == "📝 Do'konlar ro'yxati", F.from_user.id == SUPER_ADMIN_ID)
+# 2. MaskanLAR RO'YXATI
+@admin_router.message(F.text == "📝 Maskanlar ro'yxati", F.from_user.id == SUPER_ADMIN_ID)
 async def list_shops(message: Message):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
@@ -157,9 +157,9 @@ async def list_shops(message: Message):
     conn.close()
 
     if not shops:
-        return await message.answer("Hozircha do'konlar yo'q.")
+        return await message.answer("Hozircha Maskanlar yo'q.")
     
-    text = "🏬 <b>Do'konlar ro'yxati:</b>\n\n"
+    text = "🏬 <b>Maskanlar ro'yxati:</b>\n\n"
     for s in shops:
         text += f"📍 {s[0]} | Admin ID: <code>{s[1]}</code> | Tel: {s[2]}\n"
     
@@ -186,7 +186,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Barcha foydalanuvchilarni yig'ish (Do'konchilar + Qarzdorlar)
+    # Barcha foydalanuvchilarni yig'ish (Maskanchilar + Qarzdorlar)
     cursor.execute("SELECT owner_id FROM shops")
     owners = [row[0] for row in cursor.fetchall()]
     cursor.execute("SELECT customer_id FROM debts")
@@ -207,8 +207,8 @@ async def process_broadcast(message: Message, state: FSMContext):
     await message.answer(f"✅ Reklama {sent_count} ta foydalanuvchiga muvaffaqiyatli yuborildi.")
     await state.clear()
 
-# --- DO'KONLAR RO'YXATI VA O'CHIRISH ---
-@admin_router.message(F.text == "📝 Do'konlar ro'yxati", F.from_user.id == SUPER_ADMIN_ID)
+# --- MaskanLAR RO'YXATI VA O'CHIRISH ---
+@admin_router.message(F.text == "📝 Maskanlar ro'yxati", F.from_user.id == SUPER_ADMIN_ID)
 async def list_shops_admin(message: Message, state: FSMContext):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
@@ -217,13 +217,13 @@ async def list_shops_admin(message: Message, state: FSMContext):
     conn.close()
 
     if not shops:
-        return await message.answer("Hozircha do'konlar yo'q.")
+        return await message.answer("Hozircha Maskanlar yo'q.")
 
-    text = "🏬 <b>Tizimdagi do'konlar:</b>\n\n"
+    text = "🏬 <b>Tizimdagi Maskanlar:</b>\n\n"
     for s in shops:
         text += f"🆔 <code>{s[0]}</code> | 🏪 {s[1]} | ID: {s[2]}\n"
     
-    text += "\n❌ Do'konni o'chirish uchun uning <b>ID raqamini</b> yuboring (yoki 'bekor' deb yozing):"
+    text += "\n❌ Maskanni o'chirish uchun uning <b>ID raqamini</b> yuboring (yoki 'bekor' deb yozing):"
     await state.set_state(AdminStates.waiting_for_shop_id_to_delete)
     await message.answer(text, parse_mode="HTML")
 
@@ -240,18 +240,18 @@ async def process_shop_delete(message: Message, state: FSMContext):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'konni o'chirishdan oldin borligini tekshiramiz
+    # Maskanni o'chirishdan oldin borligini tekshiramiz
     cursor.execute("SELECT name FROM shops WHERE id = ?", (shop_id,))
     shop = cursor.fetchone()
     
     if shop:
         cursor.execute("DELETE FROM shops WHERE id = ?", (shop_id,))
-        # Do'konga tegishli qarzlarni ham o'chirib tashlash (ixtiyoriy)
+        # Maskanga tegishli qarzlarni ham o'chirib tashlash (ixtiyoriy)
         cursor.execute("DELETE FROM debts WHERE shop_id = ?", (shop_id,))
         conn.commit()
-        await message.answer(f"✅ '{shop[0]}' do'koni va uning barcha ma'lumotlari o'chirildi.")
+        await message.answer(f"✅ '{shop[0]}' Maskani va uning barcha ma'lumotlari o'chirildi.")
     else:
-        await message.answer("⚠️ Bunday ID dagi do'kon topilmadi.")
+        await message.answer("⚠️ Bunday ID dagi Maskan topilmadi.")
     
     conn.close()
     await state.clear()
@@ -274,7 +274,7 @@ async def show_stats(message: Message):
     conn.close()
 
     text = (f"📈 <b>Tizim statistikasi:</b>\n\n"
-            f"🏪 Jami do'konlar: <b>{shops_count} ta</b>\n"
+            f"🏪 Jami Maskanlar: <b>{shops_count} ta</b>\n"
             f"👥 Jami mijozlar: <b>{users_count} ta</b>\n"
             f"💰 To'lanmagan qarzlar soni: <b>{debts_data[0]} ta</b>\n"
             f"💵 Jami qarz miqdori: <b>{debts_data[1] or 0:,} so'm</b>")
@@ -288,10 +288,10 @@ class AdminStates(StatesGroup):
     waiting_for_search_query = State()
 
 # --- QIDIRUVNI BOSHLASH ---
-@admin_router.message(F.text == "🔍 Do'konni qidirish", F.from_user.id == SUPER_ADMIN_ID)
+@admin_router.message(F.text == "🔍 Maskanni qidirish", F.from_user.id == SUPER_ADMIN_ID)
 async def search_shop_start(message: Message, state: FSMContext):
     await state.set_state(AdminStates.waiting_for_search_query)
-    await message.answer("Qidirilayotgan do'kon nomini yoki qismini kiriting:")
+    await message.answer("Qidirilayotgan Maskan nomini yoki qismini kiriting:")
 
 # --- QIDIRUV NATIJASI ---
 @admin_router.message(AdminStates.waiting_for_search_query)
@@ -307,20 +307,20 @@ async def process_shop_search(message: Message, state: FSMContext):
     conn.close()
 
     if not shops:
-        await message.answer(f"🔍 '{query}' so'zi qatnashgan hech qanday do'kon topilmadi.")
+        await message.answer(f"🔍 '{query}' so'zi qatnashgan hech qanday Maskan topilmadi.")
         await state.clear()
         return
 
     await message.answer(f"🔎 <b>'{query}'</b> bo'yicha natijalar:")
 
     for shop in shops:
-        # Har bir do'kon uchun o'chirish tugmasi
+        # Har bir Maskan uchun o'chirish tugmasi
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🗑 Do'konni o'chirish", callback_data=f"del_shop_{shop[0]}")]
+            [InlineKeyboardButton(text="🗑 Maskanni o'chirish", callback_data=f"del_shop_{shop[0]}")]
         ])
         
         await message.answer(
-            f"🏪 <b>Do'kon:</b> {shop[1]}\n"
+            f"🏪 <b>Maskan:</b> {shop[1]}\n"
             f"📞 Tel: {shop[3]}\n"
             f"🆔 ID: <code>{shop[2]}</code>",
             reply_markup=keyboard,
@@ -336,20 +336,20 @@ async def delete_shop_callback(callback: types.CallbackQuery):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Avval do'kon nomini olamiz (xabar uchun)
+    # Avval Maskan nomini olamiz (xabar uchun)
     cursor.execute("SELECT name FROM shops WHERE id = ?", (shop_id,))
     shop = cursor.fetchone()
     
     if shop:
-        # Do'konni va unga tegishli qarzlarni o'chiramiz
+        # Maskanni va unga tegishli qarzlarni o'chiramiz
         cursor.execute("DELETE FROM shops WHERE id = ?", (shop_id,))
         cursor.execute("DELETE FROM debts WHERE shop_id = ?", (shop_id,))
         conn.commit()
         
         await callback.answer(f"'{shop[0]}' o'chirildi!", show_alert=True)
         # Xabarni o'zgartiramiz
-        await callback.message.edit_text(f"❌ <b>{shop[0]}</b> do'koni tizimdan butunlay o'chirildi.", parse_mode="HTML")
+        await callback.message.edit_text(f"❌ <b>{shop[0]}</b> Maskani tizimdan butunlay o'chirildi.", parse_mode="HTML")
     else:
-        await callback.answer("Do'kon topilmadi yoki allaqachon o'chirilgan.")
+        await callback.answer("Maskan topilmadi yoki allaqachon o'chirilgan.")
     
     conn.close()

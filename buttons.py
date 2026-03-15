@@ -3,8 +3,8 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 def admin_keyboard():
     buttons = [
-        [KeyboardButton(text="🏪 Do'kon qo'shish"), KeyboardButton(text="🔍 Do'konni qidirish")],
-        [KeyboardButton(text="📝 Do'konlar ro'yxati"), KeyboardButton(text="📊 Statistika")],
+        [KeyboardButton(text="🏪 Maskan qo'shish"), KeyboardButton(text="🔍 Maskanni qidirish")],
+        [KeyboardButton(text="📝 Maskanlar ro'yxati"), KeyboardButton(text="📊 Statistika")],
         [KeyboardButton(text="📢 Reklama yuborish")]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)

@@ -16,7 +16,7 @@ from buttons import shop_keyboard
 SUPER_ADMIN_ID = 5148276461
 shop_router = Router()
 
-# --- DO'KONCHI HOLATLARI ---
+# --- MaskanCHI HOLATLARI ---
 class DebtAdd(StatesGroup):
     customer_phone = State()
     found_existing = State()
@@ -25,7 +25,7 @@ class DebtAdd(StatesGroup):
     due_date = State()
     confirm = State()
 
-# --- DO'KONCHI KLAVIATURASI ---
+# --- MaskanCHI KLAVIATURASI ---
 def cancel_keyboard():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🚫 Bekor qilish")]
@@ -69,13 +69,13 @@ async def debt_phone_check(message: Message, state: FSMContext):
         conn = sqlite3.connect('qarz_tizimii.db')
         cursor = conn.cursor()
         
-        # Avval do'konchini aniqlab olamiz (shop_id kerak)
+        # Avval Maskanchini aniqlab olamiz (shop_id kerak)
         cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
         shop_res = cursor.fetchone()
         
         if not shop_res:
             conn.close()
-            return await message.answer("⚠️ Siz do'kon egasi sifatida ro'yxatdan o'tmagansiz!")
+            return await message.answer("⚠️ Siz Maskan egasi sifatida ro'yxatdan o'tmagansiz!")
         
         shop_id = shop_res[0]
         await state.update_data(shop_id=shop_id)
@@ -199,11 +199,11 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         conn = sqlite3.connect('qarz_tizimii.db')
         cursor = conn.cursor()
         
-        # Do'kon ma'lumotlarini olish
+        # Maskan ma'lumotlarini olish
         cursor.execute("SELECT id, name FROM shops WHERE owner_id = ?", (uid,))
         shop_res = cursor.fetchone()
         if not shop_res:
-            return await callback.answer("Xato: Do'kon topilmadi!")
+            return await callback.answer("Xato: Maskan topilmadi!")
         
         shop_id, shop_name = shop_res
 
@@ -245,7 +245,7 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         await callback.answer()
 
 # --- QARZLAR RO'YXATI ---
-@shop_router.message(F.text == "📊 Qarzlar umumiy") # Do'konchi uchun
+@shop_router.message(F.text == "📊 Qarzlar umumiy") # Maskanchi uchun
 async def shop_stats(message: Message):
     uid = message.from_user.id
     conn = sqlite3.connect('qarz_tizimii.db')
@@ -262,7 +262,7 @@ async def shop_stats(message: Message):
     total = res[1] if res[1] else 0
 
     text = (
-        "📈 <b>Sizning do'koningiz ko'rsatkichlari:</b>\n"
+        "📈 <b>Sizning Maskaningiz ko'rsatkichlari:</b>\n"
         "────────────────────\n"
         f"👥 Qarzdorlar soni: <b>{count} ta</b>\n"
         f"💰 Jami kutilayotgan summa: <b>{total:,} so'm</b>\n"
@@ -393,7 +393,7 @@ async def save_partial_payment(message: Message, state: FSMContext):
     conn.commit()
     conn.close()
     
-    # Javob xabari va do'konchi menyusini qaytarish
+    # Javob xabari va Maskanchi menyusini qaytarish
     await message.answer(msg, reply_markup=shop_keyboard())
     
     # Mijozga xabar (ixtiyoriy)
@@ -417,13 +417,13 @@ async def process_universal_search(message: Message, state: FSMContext):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'kon ID sini aniqlaymiz
+    # Maskan ID sini aniqlaymiz
     cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
     shop_res = cursor.fetchone()
     
     if not shop_res:
         conn.close()
-        return await message.answer("Siz do'kon egasi emassiz.")
+        return await message.answer("Siz Maskan egasi emassiz.")
     
     shop_id = shop_res[0]
 
@@ -480,12 +480,12 @@ async def shop_broadcast_start(message: Message, state: FSMContext):
 @shop_router.message(ShopBroadcast.waiting_for_message)
 async def process_shop_broadcast(message: Message, state: FSMContext):
     broadcast_text = message.text
-    uid = message.from_user.id # Do'konchi IDsi
+    uid = message.from_user.id # Maskanchi IDsi
     
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'kon ma'lumotlarini va uning qarzdorlarini olamiz
+    # Maskan ma'lumotlarini va uning qarzdorlarini olamiz
     # Faqat botga a'zo bo'lgan (customer_id bor) va qarzi uzilmaganlarni olamiz
     cursor.execute("""
         SELECT DISTINCT d.customer_id, s.name 
@@ -510,7 +510,7 @@ async def process_shop_broadcast(message: Message, state: FSMContext):
     for customer in customers:
         try:
             target_id = customer[0]
-            text = (f"📩 <b>{shop_name} do'konidan xabar:</b>\n\n"
+            text = (f"📩 <b>{shop_name} Maskanidan xabar:</b>\n\n"
                     f"{broadcast_text}")
             
             await message.bot.send_message(target_id, text, parse_mode="HTML")
@@ -537,13 +537,13 @@ async def export_excel(message: types.Message):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'kon ID sini olish
+    # Maskan ID sini olish
     cursor.execute("SELECT id, name FROM shops WHERE owner_id = ?", (uid,))
     shop = cursor.fetchone()
     
     if not shop:
         conn.close()
-        return await message.answer("Siz do'kon egasi emassiz!")
+        return await message.answer("Siz Maskan egasi emassiz!")
     
     shop_id, shop_name = shop
     
@@ -558,7 +558,7 @@ async def export_excel(message: types.Message):
     # --- TEKSHIRUV QISMI ---
     if not rows:
         return await message.answer(
-            f"❌ <b>{shop_name}</b> do'konida hali qarz olgan mijozlar mavjud emas."
+            f"❌ <b>{shop_name}</b> Maskanida hali qarz olgan mijozlar mavjud emas."
         )
     # -----------------------
 
@@ -588,7 +588,7 @@ async def export_excel(message: types.Message):
     
     await message.answer_document(
         document=document, 
-        caption=f"📊 <b>{shop_name}</b> do'koni uchun to'liq hisobot."
+        caption=f"📊 <b>{shop_name}</b> Maskani uchun to'liq hisobot."
     )
 @shop_router.message(F.text == "📖 Botdan foydalanish")
 async def shop_help_guide(message: Message):
@@ -636,13 +636,13 @@ async def show_overdue_debts(message: types.Message):
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'kon ID-sini aniqlash
+    # Maskan ID-sini aniqlash
     cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
     shop_res = cursor.fetchone()
     
     if not shop_res:
         conn.close()
-        return await message.answer("⚠️ Siz do'kon egasi emassiz!")
+        return await message.answer("⚠️ Siz Maskan egasi emassiz!")
     
     shop_id = shop_res[0]
 

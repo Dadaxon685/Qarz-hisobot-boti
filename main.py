@@ -35,7 +35,7 @@ async def send_daily_reminders():
             text = (
                 f"🔔 <b>QARZNI QAYTARISH HAQIDA ESLATMA</b>\n"
                 f"────────────────────\n"
-                f"Hurmatli <b>{name}</b>, sizning <b>{shop_name}</b> do'konidan "
+                f"Hurmatli <b>{name}</b>, sizning <b>{shop_name}</b> Maskanidan "
                 f"<b>{amount:,} so'm</b> miqdorida qarzingiz bor.\n\n"
                 f"📅 To'lov muddati: <b>{date}</b>\n"
                 f"────────────────────\n"

@@ -6,7 +6,7 @@ def init_db():
     conn = sqlite3.connect('qarz_tizimii.db')
     cursor = conn.cursor()
     
-    # Do'konlar jadvali
+    # Maskanlar jadvali
     cursor.execute('''CREATE TABLE IF NOT EXISTS shops (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
