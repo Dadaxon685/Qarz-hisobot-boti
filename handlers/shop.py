@@ -144,11 +144,11 @@ async def debt_amount_set(message: Message, state: FSMContext):
     amount_str = message.text.strip().replace(' ', '').replace(',', '')
     
     if not amount_str.isdigit():
-        return await message.answer("❌ <b>Xato!</b> Faqat raqam kiriting.")
+        return await message.answer("❌ Xato! Faqat raqam kiriting.")
     
     await state.update_data(amount=float(amount_str))
     await state.set_state(DebtAdd.due_date)
-    await message.answer("📅 <b>To'lov muddati:</b>\n(Format: DD.MM.YYYY, masalan: 25.12.2024)")
+    await message.answer("📅 To'lov muddati:(Format: DD.MM.YYYY, masalan: 25.12.2024)")
 
 # --- 6. SANANI TEKSHIRISH VA TASDIQLASH ---
 @shop_router.message(DebtAdd.due_date)
