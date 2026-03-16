@@ -474,7 +474,7 @@ async def process_universal_search(message: Message, state: FSMContext):
 @shop_router.message(F.text == "📢 E'lon yuborish")
 async def shop_broadcast_start(message: Message, state: FSMContext):
     await state.set_state(ShopBroadcast.waiting_for_message)
-    await message.answer("📣 <b>Faqat sizning qarzdorlaringizga</b> yuboriladigan xabar matnini kiriting:")
+    await message.answer("📣Faqat sizning qarzdorlaringizga yuboriladigan xabar matnini kiriting:")
 
 # 2. Xabarni tarqatish
 @shop_router.message(ShopBroadcast.waiting_for_message)
