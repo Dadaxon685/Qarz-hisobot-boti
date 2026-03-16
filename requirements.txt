@@ -2,3 +2,4 @@ aiogram
 asyncpg
 python-dotenv
 apscheduler
+openpyxl
