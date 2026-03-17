@@ -47,7 +47,7 @@ def get_phone_keyboard():
 def user_start_inline():
     builder = InlineKeyboardBuilder()
     # Moviy va yashil rangli elementlar bilan boyitish
-    # builder.row(InlineKeyboardButton(text="🔍 Qarzlarimni tekshirish", callback_data="check_debts"))
+    builder.row(InlineKeyboardButton(text="🔍 Qarzlarimni tekshirish", callback_data="check_debts"))
     # Olov yoki yashil rangli emoji orqali e'tiborni tortish
     builder.row(InlineKeyboardButton(text="🚀 O'z Maskanimni ochish", callback_data="open_shop"))
     return builder.as_markup()
