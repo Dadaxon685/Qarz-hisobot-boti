@@ -232,7 +232,7 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         # Mijozga bildirishnoma yuborish
         if c_id:
             try:
-                await callback.bot.send_message(c_id, f"💰 <b>Qarz hisobingiz yangilandi!</b>\n🏪 {shop_name}\n➕ Qo'shildi: {data['amount']:,} so'm\n📅 Muddat: {data['due_date']}")
+                await callback.bot.send_message(c_id, f"💰 Qarz hisobingiz yangilandi!\n🏪 {shop_name}\n➕ Qo'shildi: {data['amount']:,} so'm\n📅 Muddat: {data['due_date']}")
             except: pass
 
         await callback.message.edit_text(res_text, parse_mode="HTML")
