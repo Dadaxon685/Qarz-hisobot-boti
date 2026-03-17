@@ -163,7 +163,7 @@ async def debt_due_date_confirm(message: Message, state: FSMContext):
             return await message.answer("⚠️ Xato! Sana bugundan oldingi bo'lishi mumkin emas.")
             
     except ValueError:
-        return await message.answer("❌ <b>Sana formati xato!</b>\nNamuna: 31.12.2024")
+        return await message.answer("❌ Sana formati xato!\nNamuna: 31.12.2024")
 
     await state.update_data(due_date=formatted_date)
     data = await state.get_data()
