@@ -58,7 +58,7 @@ async def debt_phone_check(message: Message, state: FSMContext):
     phone = message.text.strip()
     
     if not re.match(r'^\+?998\d{9}$', phone):
-        return await message.answer("❌ <b>Xato format!</b>\nNamuna: <code>+998901234567</code>", parse_mode="HTML")
+        return await message.answer("❌ Xato format!\nNamuna: <code>+998901234567</code>", parse_mode="HTML")
     
     if not phone.startswith('+'): phone = '+' + phone
     await state.update_data(customer_phone=phone)
@@ -160,7 +160,7 @@ async def debt_due_date_confirm(message: Message, state: FSMContext):
         valid_date = datetime.strptime(formatted_date, "%d.%m.%Y")
         
         if valid_date.date() < datetime.now().date():
-            return await message.answer("⚠️ <b>Xato!</b> Sana bugundan oldingi bo'lishi mumkin emas.")
+            return await message.answer("⚠️ Xato! Sana bugundan oldingi bo'lishi mumkin emas.")
             
     except ValueError:
         return await message.answer("❌ <b>Sana formati xato!</b>\nNamuna: 31.12.2024")
