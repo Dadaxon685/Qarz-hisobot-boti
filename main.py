@@ -250,7 +250,7 @@ def shop_stats(user=Depends(require_shop)):
         shop_id = user["shop_id"]
         cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM debts WHERE shop_id=%s AND status='unpaid'", (shop_id,))
         d = cursor.fetchone()
-        cursor.execute("SELECT COUNT(*) FROM debts WHERE shop_id=%s AND status='unpaid' AND TO_DATE(due_date,'DD.MM.YYYY') < CURRENT_DATE", (shop_id,))
+        cursor.execute("SELECT COUNT(*) FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL < CURRENT_DATE", (shop_id,))
         overdue = cursor.fetchone()[0]
         return {"debt_count": d[0], "total_debt": float(d[1]), "overdue_count": overdue}
     finally:
