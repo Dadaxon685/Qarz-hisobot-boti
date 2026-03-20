@@ -1,6 +1,5 @@
 """
-Qarz Tizimi — Bot + FastAPI
-FastAPI asosiy process, Bot background thread da
+Qarz Tizimi — Bot main threadda, FastAPI background threadda
 """
 from create_db import create_all_tables
 create_all_tables()
@@ -40,13 +39,7 @@ SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", "5148276461"))
 # ============================================================
 
 app = FastAPI(title="Qarz Tizimi API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 security = HTTPBearer()
 otp_store = {}
@@ -78,10 +71,10 @@ class PaymentCreate(BaseModel):
     debt_id: int
     amount: float
 
-def create_token(data: dict) -> str:
+def create_token(data):
     return jwt.encode(data, SECRET_KEY, algorithm="HS256")
 
-def decode_token(token: str) -> dict:
+def decode_token(token):
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except:
@@ -100,7 +93,6 @@ def require_shop(user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Ruxsat yo'q")
     return user
 
-# --- AUTH ---
 @app.get("/")
 def root():
     return {"status": "Qarz Tizimi API ishlayapti!"}
@@ -127,7 +119,7 @@ async def send_otp(req: OtpRequest):
         bot = Bot(token=BOT_TOKEN)
         await bot.send_message(
             chat_id=owner_id,
-            text=f"🔐 <b>Kirish kodi</b>\n\nWeb panelga kirish uchun:\n\n<code>{code}</code>\n\n⚠️ Kodni hech kimga bermang!",
+            text=f"🔐 <b>Kirish kodi</b>\n\nWeb panelga kirish:\n\n<code>{code}</code>\n\n⚠️ Kodni hech kimga bermang!",
             parse_mode="HTML"
         )
         await bot.session.close()
@@ -159,7 +151,6 @@ def admin_login(req: AdminLogin):
     token = create_token({"telegram_id": req.telegram_id, "role": "admin"})
     return {"token": token, "role": "admin"}
 
-# --- ADMIN ---
 @app.get("/admin/stats")
 def admin_stats(user=Depends(require_admin)):
     conn = get_connection()
@@ -231,7 +222,6 @@ def admin_all_debts(user=Depends(require_admin)):
     finally:
         conn.close()
 
-# --- SHOP ---
 @app.get("/shop/stats")
 def shop_stats(user=Depends(require_shop)):
     conn = get_connection()
@@ -310,31 +300,31 @@ def shop_delete_debt(debt_id: int, user=Depends(require_shop)):
     finally:
         conn.close()
 
-# ============================================================
-# BOT — background threadda
-# ============================================================
-
-def run_bot():
-    async def start():
-        bot = Bot(token=BOT_TOKEN)
-        dp = Dispatcher(storage=MemoryStorage())
-        dp.include_router(admin_router)
-        dp.include_router(shop_router)
-        dp.include_router(user_router)
-        setup_scheduler(bot)
-        logging.info("Bot ishga tushdi!")
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    asyncio.run(start())
-
-# Bot ni alohida threadda ishga tushirish
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
-logging.info("Bot thread ishga tushdi!")
 
 # ============================================================
-# ASOSIY START — FastAPI Railway PORT da
+# STARTUP: Bot ni FastAPI startup eventida ishga tushirish
+# ============================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """FastAPI ishga tushganda botni ham ishga tushirish"""
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(admin_router)
+    dp.include_router(shop_router)
+    dp.include_router(user_router)
+    setup_scheduler(bot)
+    logging.info("Bot polling boshlandi!")
+    # Background task sifatida ishga tushirish
+    asyncio.create_task(
+        dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    )
+
+
+# ============================================================
+# MAIN
 # ============================================================
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
