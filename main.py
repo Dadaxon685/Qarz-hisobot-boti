@@ -267,43 +267,92 @@ def shop_get_debts(user=Depends(require_shop)):
     finally:
         conn.close()
 
+async def notify_customer(customer_id, text):
+    if not customer_id: return
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        await bot.send_message(chat_id=customer_id, text=text, parse_mode="HTML")
+        await bot.session.close()
+    except Exception as e:
+        logging.warning(f"Xabar yuborilmadi {customer_id}: {e}")
+
 @app.post("/shop/debts")
-def shop_create_debt(data: DebtCreate, user=Depends(require_shop)):
+async def shop_create_debt(data: DebtCreate, user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
         shop_id = user["shop_id"]
+        shop_name = user["shop_name"]
+
+        cursor.execute("SELECT customer_id FROM debts WHERE customer_phone=%s AND customer_id IS NOT NULL LIMIT 1", (data.customer_phone,))
+        cid_row = cursor.fetchone()
+        customer_id = cid_row[0] if cid_row else None
+
         cursor.execute("SELECT id,amount FROM debts WHERE shop_id=%s AND customer_phone=%s AND status='unpaid'", (shop_id, data.customer_phone))
         existing = cursor.fetchone()
         if existing:
             new_amount = float(existing[1]) + data.amount
             cursor.execute("UPDATE debts SET amount=%s, due_date=%s, debt_date=CURRENT_DATE WHERE id=%s", (new_amount, data.due_date, existing[0]))
             conn.commit()
+            await notify_customer(customer_id,
+                f"⚠️ <b>Qarzingiz yangilandi!</b>\n\n"
+                f"🏪 <b>Maskan:</b> {shop_name}\n"
+                f"💰 <b>Umumiy qarz:</b> {new_amount:,.0f} so'm\n"
+                f"📅 <b>Muddat:</b> {data.due_date}\n\n"
+                f"Iltimos, o'z vaqtida to'lang! 🙏"
+            )
             return {"message": "Qarz yangilandi", "total": new_amount}
+
         cursor.execute("INSERT INTO debts (shop_id,customer_phone,customer_name,amount,due_date,status,debt_date) VALUES (%s,%s,%s,%s,%s,'unpaid',CURRENT_DATE) RETURNING id",
                        (shop_id, data.customer_phone, data.customer_name, data.amount, data.due_date))
         debt_id = cursor.fetchone()[0]
         conn.commit()
+        await notify_customer(customer_id,
+            f"💳 <b>Sizga yangi qarz yozildi!</b>\n\n"
+            f"🏪 <b>Maskan:</b> {shop_name}\n"
+            f"👤 <b>Ism:</b> {data.customer_name}\n"
+            f"💰 <b>Summa:</b> {data.amount:,.0f} so'm\n"
+            f"📅 <b>To'lov muddati:</b> {data.due_date}\n\n"
+            f"⚠️ Muddatida to'lang!\n"
+            f"📱 Qarzlaringizni ko'rish: /start"
+        )
         return {"message": "Qarz saqlandi", "id": debt_id}
     finally:
         conn.close()
 
 @app.post("/shop/payment")
-def shop_payment(data: PaymentCreate, user=Depends(require_shop)):
+async def shop_payment(data: PaymentCreate, user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT amount FROM debts WHERE id=%s AND shop_id=%s", (data.debt_id, user["shop_id"]))
+        cursor.execute("SELECT amount, customer_id, customer_name FROM debts WHERE id=%s AND shop_id=%s", (data.debt_id, user["shop_id"]))
         res = cursor.fetchone()
         if not res:
             raise HTTPException(status_code=404, detail="Qarz topilmadi")
         current = float(res[0])
+        customer_id = res[1]
+        customer_name = res[2]
         if data.amount >= current:
             cursor.execute("DELETE FROM debts WHERE id=%s", (data.debt_id,))
             msg = "Qarz to'liq yopildi"
+            await notify_customer(customer_id,
+                f"✅ <b>Qarzingiz yopildi!</b>\n\n"
+                f"🏪 <b>Maskan:</b> {user['shop_name']}\n"
+                f"👤 <b>Ism:</b> {customer_name}\n"
+                f"💰 <b>To'liq to'langan:</b> {current:,.0f} so'm\n\n"
+                f"Rahmat! Endi qarzingiz yo'q 🎉"
+            )
         else:
-            cursor.execute("UPDATE debts SET amount=%s WHERE id=%s", (current - data.amount, data.debt_id))
-            msg = f"Qoldi: {current - data.amount:,.0f} so'm"
+            new_amount = current - data.amount
+            cursor.execute("UPDATE debts SET amount=%s WHERE id=%s", (new_amount, data.debt_id))
+            msg = f"Qoldi: {new_amount:,.0f} so'm"
+            await notify_customer(customer_id,
+                f"💰 <b>To'lov qabul qilindi!</b>\n\n"
+                f"🏪 <b>Maskan:</b> {user['shop_name']}\n"
+                f"✅ <b>To'langan:</b> {data.amount:,.0f} so'm\n"
+                f"📊 <b>Qolgan qarz:</b> {new_amount:,.0f} so'm\n\n"
+                f"Rahmat! Qolgan qarzni ham o'z vaqtida to'lang 🙏"
+            )
         conn.commit()
         return {"message": msg}
     finally:
