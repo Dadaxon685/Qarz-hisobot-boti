@@ -226,6 +226,59 @@ def admin_delete_shop(shop_id: int, user=Depends(require_admin)):
     finally:
         conn.close()
 
+class BroadcastRequest(BaseModel):
+    text: str
+    target: str = "all"  # all, shops, debtors
+
+class SendMessageRequest(BaseModel):
+    owner_id: int
+    text: str
+
+@app.post("/admin/broadcast")
+async def admin_broadcast(data: BroadcastRequest, user=Depends(require_admin)):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        user_ids = set()
+
+        if data.target in ("all", "shops"):
+            cursor.execute("SELECT owner_id FROM shops")
+            for row in cursor.fetchall():
+                user_ids.add(row[0])
+
+        if data.target in ("all", "debtors"):
+            cursor.execute("SELECT DISTINCT customer_id FROM debts WHERE customer_id IS NOT NULL AND status='unpaid'")
+            for row in cursor.fetchall():
+                user_ids.add(row[0])
+
+        sent = 0
+        bot = Bot(token=BOT_TOKEN)
+        for uid in user_ids:
+            try:
+                await bot.send_message(chat_id=uid, text=f"📣 <b>XABAR</b>\n\n{data.text}", parse_mode="HTML")
+                sent += 1
+                import asyncio
+                await asyncio.sleep(0.05)
+            except: continue
+        await bot.session.close()
+        return {"sent": sent, "total": len(user_ids)}
+    finally:
+        conn.close()
+
+@app.post("/admin/send-message")
+async def admin_send_message(data: SendMessageRequest, user=Depends(require_admin)):
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        await bot.send_message(
+            chat_id=data.owner_id,
+            text=f"📩 <b>Admin xabari:</b>\n\n{data.text}",
+            parse_mode="HTML"
+        )
+        await bot.session.close()
+        return {"message": "Yuborildi"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/admin/debts")
 def admin_all_debts(user=Depends(require_admin)):
     conn = get_connection()
