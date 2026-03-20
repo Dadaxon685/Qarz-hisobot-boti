@@ -3,21 +3,21 @@ import psycopg2
 from urllib.parse import urlparse
 
 def get_connection():
-    # Railway Variables bo'limidagi DATABASE_URL ni oladi
+    # Railway-dagi DATABASE_URL o'zgaruvchisini olamiz
     db_url = os.getenv('DATABASE_URL')
     
     if not db_url:
-        raise ValueError("DATABASE_URL topilmadi! Railway-da Variables-ni tekshiring.")
+        raise ValueError("DATABASE_URL topilmadi!")
 
     # URLni tahlil qilamiz
     result = urlparse(db_url)
     
-    # Eng ishonchli ulanish usuli (parametrlar orqali)
+    # Har bir parametrni alohida uzatamiz
     return psycopg2.connect(
         database=result.path[1:],
         user=result.username,
         password=result.password,
         host=result.hostname,
         port=result.port,
-        sslmode='require' # Railway tashqi ulanish uchun bu shart
+        sslmode='require'  # Tashqi ulanish uchun bu shart!
     )
