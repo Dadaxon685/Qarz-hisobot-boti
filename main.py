@@ -141,6 +141,26 @@ def verify_otp(req: OtpVerify):
     token = create_token({"role": "shop", "shop_id": data["shop_id"], "shop_name": data["shop_name"], "owner_id": data["owner_id"]})
     return {"token": token, "role": "shop", "shop_name": data["shop_name"]}
 
+@app.post("/auth/telegram-login")
+def telegram_login(data: dict):
+    """Telegram Widget dan kelgan ma'lumotlar bilan kirish"""
+    telegram_id = data.get("id")
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="Telegram ID topilmadi")
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (telegram_id,))
+        shop = cursor.fetchone()
+        if not shop:
+            raise HTTPException(status_code=404, detail="Bu Telegram akkauntga bog'liq maskan topilmadi")
+        shop_id, shop_name = shop
+        token = create_token({"role": "shop", "shop_id": shop_id, "shop_name": shop_name, "owner_id": telegram_id})
+        return {"token": token, "role": "shop", "shop_name": shop_name}
+    finally:
+        conn.close()
+
 @app.post("/auth/admin-login")
 def admin_login(req: AdminLogin):
     if req.telegram_id != SUPER_ADMIN_ID:
