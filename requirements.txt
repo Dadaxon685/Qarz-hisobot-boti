@@ -1,8 +1,8 @@
-aiogram==3.7.0
-pg8000==1.31.2
-python-dotenv==1.0.0
-apscheduler==3.10.4
-fastapi==0.111.0
-uvicorn==0.29.0
-pyjwt==2.8.0
-python-multipart==0.0.9
+aiogram
+pg8000
+python-dotenv
+apscheduler
+fastapi
+uvicorn
+pyjwt
+python-multipart
