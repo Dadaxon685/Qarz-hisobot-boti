@@ -1,20 +1,19 @@
 import os
 import psycopg2
-from psycopg2.extras import DictCursor
 
 def get_connection():
-    """
-    Railway'dagi PostgreSQL bazasiga ulanish hosil qiladi.
-    DATABASE_URL o'zgaruvchisi Railway Variables bo'limida bo'lishi shart.
-    """
+    # Railway-dagi URL: postgresql://user:pass@host:port/dbname
     db_url = os.getenv('DATABASE_URL')
     
     if not db_url:
-        raise ValueError("Xatolik: DATABASE_URL topilmadi! Railway Variables-ni tekshiring.")
-        
-    # sslmode='require' tashqi server bilan xavfsiz bog'lanish uchun shart
-    return psycopg2.connect(db_url, sslmode='require')
+        raise ValueError("DATABASE_URL topilmadi!")
 
-# Ma'lumotlarni lug'at (dict) ko'rinishida olish uchun yordamchi funksiya (ixtiyoriy)
-def get_dict_cursor(conn):
-    return conn.cursor(cursor_factory=DictCursor)
+    try:
+        # URL "postgresql://" bilan boshlansa, uni psycopg2 tushunadigan 
+        # formatga o'tkazishning eng xavfsiz yo'li - to'g'ridan-to'g'ri URLni uzatish
+        # lekin ba'zi versiyalarda xato bermasligi uchun quyidagicha ulanamiz:
+        return psycopg2.connect(db_url)
+    except Exception as e:
+        # Agar yuqoridagi ishlamasa, muqobil variant (aynan Railway uchun):
+        print(f"Ulanishda xato: {e}")
+        raise e
