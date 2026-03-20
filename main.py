@@ -250,7 +250,7 @@ def shop_stats(user=Depends(require_shop)):
         shop_id = user["shop_id"]
         cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM debts WHERE shop_id=%s AND status='unpaid'", (shop_id,))
         d = cursor.fetchone()
-        cursor.execute("SELECT COUNT(*) FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL < CURRENT_DATE", (shop_id,))
+        cursor.execute("SELECT COUNT(*) FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL", (shop_id,))
         overdue = cursor.fetchone()[0]
         return {"debt_count": d[0], "total_debt": float(d[1]), "overdue_count": overdue}
     finally:
@@ -345,12 +345,6 @@ async def startup_event():
 # MAIN
 # ============================================================
 
-# Eski
-# if __name__ == "__main__":
-#     port = int(os.getenv("PORT", 8000))
-#     uvicorn.run("main:app", host="0.0.0.0", port=port)
-
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8080)
-
-
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
