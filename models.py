@@ -1,34 +1,37 @@
-
-import sqlite3
-
+# models.py
+from handlers.connections import get_connection
 
 def init_db():
-    conn = sqlite3.connect('qarz_tizimii.db')
+    conn = get_connection()
     cursor = conn.cursor()
     
-    # Maskanlar jadvali
+    # 1. Maskanlar jadvali
     cursor.execute('''CREATE TABLE IF NOT EXISTS shops (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT,
         owner_id BIGINT UNIQUE,
         phone TEXT,
         address TEXT
     )''')
     
-    # Qarzlar jadvali (Hamma ustunlar borligiga ishonch hosil qiling)
+    # 2. Qarzlar jadvali
     cursor.execute('''CREATE TABLE IF NOT EXISTS debts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         shop_id INTEGER,
-        customer_id BIGINT,        -- Telegramga xabar yuborish uchun shart
+        customer_id BIGINT,
         customer_name TEXT,
-        customer_phone TEXT,       -- Telefon raqam
+        customer_phone TEXT,
         amount REAL,
         debt_date TEXT,
         due_date TEXT,
         status TEXT DEFAULT 'unpaid',
-        FOREIGN KEY (shop_id) REFERENCES shops (id)
+        CONSTRAINT fk_shop
+            FOREIGN KEY (shop_id) 
+            REFERENCES shops (id)
+            ON DELETE CASCADE
     )''')
     
     conn.commit()
+    cursor.close()
     conn.close()
-    print("Database yangilandi!")
+    print("PostgreSQL jadvallari tayyor!")
