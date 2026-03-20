@@ -1,5 +1,6 @@
 """
-Qarz Tizimi — Bot + FastAPI birgalikda
+Qarz Tizimi — Bot + FastAPI
+FastAPI asosiy process, Bot background thread da
 """
 from create_db import create_all_tables
 create_all_tables()
@@ -20,7 +21,6 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-import pg8000
 
 from handlers.admin import admin_router
 from handlers.shop import shop_router
@@ -40,12 +40,17 @@ SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", "5148276461"))
 # ============================================================
 
 app = FastAPI(title="Qarz Tizimi API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 security = HTTPBearer()
 otp_store = {}
 
-# --- Schemas ---
 class OtpRequest(BaseModel):
     phone: str
 
@@ -73,7 +78,6 @@ class PaymentCreate(BaseModel):
     debt_id: int
     amount: float
 
-# --- JWT ---
 def create_token(data: dict) -> str:
     return jwt.encode(data, SECRET_KEY, algorithm="HS256")
 
@@ -96,19 +100,15 @@ def require_shop(user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Ruxsat yo'q")
     return user
 
-def get_db():
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
 # --- AUTH ---
+@app.get("/")
+def root():
+    return {"status": "Qarz Tizimi API ishlayapti!"}
+
 @app.post("/auth/send-otp")
 async def send_otp(req: OtpRequest):
     phone = req.phone.strip()
     if not phone.startswith('+'): phone = '+' + phone
-
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -127,14 +127,14 @@ async def send_otp(req: OtpRequest):
         bot = Bot(token=BOT_TOKEN)
         await bot.send_message(
             chat_id=owner_id,
-            text=f"🔐 <b>Kirish kodi</b>\n\nWeb panelga kirish uchun:\n\n<code>{code}</code>\n\n⚠️ Ushbu kodni hech kimga bermang!",
+            text=f"🔐 <b>Kirish kodi</b>\n\nWeb panelga kirish uchun:\n\n<code>{code}</code>\n\n⚠️ Kodni hech kimga bermang!",
             parse_mode="HTML"
         )
         await bot.session.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Xabar yuborishda xato: {e}")
 
-    return {"message": f"Kod yuborildi", "shop_name": shop_name}
+    return {"message": "Kod yuborildi", "shop_name": shop_name}
 
 @app.post("/auth/verify-otp")
 def verify_otp(req: OtpVerify):
@@ -311,25 +311,30 @@ def shop_delete_debt(debt_id: int, user=Depends(require_shop)):
         conn.close()
 
 # ============================================================
-# BOT
+# BOT — background threadda
 # ============================================================
 
-def run_api():
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+def run_bot():
+    async def start():
+        bot = Bot(token=BOT_TOKEN)
+        dp = Dispatcher(storage=MemoryStorage())
+        dp.include_router(admin_router)
+        dp.include_router(shop_router)
+        dp.include_router(user_router)
+        setup_scheduler(bot)
+        logging.info("Bot ishga tushdi!")
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    asyncio.run(start())
 
-async def start_bot():
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(admin_router)
-    dp.include_router(shop_router)
-    dp.include_router(user_router)
-    setup_scheduler(bot)
-    logging.info("Bot ishga tushdi!")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+# Bot ni alohida threadda ishga tushirish
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+logging.info("Bot thread ishga tushdi!")
+
+# ============================================================
+# ASOSIY START — FastAPI Railway PORT da
+# ============================================================
 
 if __name__ == "__main__":
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
-    logging.info("FastAPI ishga tushdi!")
-    asyncio.run(start_bot())
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
