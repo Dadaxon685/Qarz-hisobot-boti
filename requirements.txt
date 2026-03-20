@@ -3,3 +3,4 @@ asyncpg
 python-dotenv
 apscheduler
 openpyxl
+psycopg2-binary
