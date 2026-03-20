@@ -17,7 +17,7 @@ from handlers.connections import get_connection
 
 # Bot sozlamalari
 # Tokenni Railway Variables-dan oladi, agar u yerda bo'lmasa pastdagini ishlatadi
-API_TOKEN = os.getenv('BOT_TOKEN', '8340168068:AAE126I8LCTcEcGfrAh9pqJ2c7cB4Ih7fJs')
+API_TOKEN = os.getenv('BOT_TOKEN', '8340168068:AAGT-xeh4xm5bWx5rupMRN6KL-2JKrq6zEk')
 
 # DefaultBotProperties orqali HTML parse mode-ni global sozlaymiz
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
