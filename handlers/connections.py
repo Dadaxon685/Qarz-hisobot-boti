@@ -1,14 +1,12 @@
+
 import os
 import psycopg2
-from psycopg2 import sql
-
-# Railway-dagi DATABASE_URL o'zgaruvchisini olyapmiz
-DATABASE_URL = os.getenv('DATABASE_URL')
 
 def get_connection():
-    """Bazaga ulanish hosil qilish"""
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
-
+    # Railway o'zgaruvchilarni avtomatik o'qiydi
+    db_url = os.getenv('DATABASE_URL')
+    return psycopg2.connect(db_url, sslmode='require')
+    
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
