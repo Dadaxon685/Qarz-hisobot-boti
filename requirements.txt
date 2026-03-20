@@ -6,3 +6,4 @@ fastapi
 uvicorn
 pyjwt
 python-multipart
+openpyxl
