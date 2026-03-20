@@ -1,6 +1,10 @@
 """
 Qarz Tizimi — Asosiy bot fayli
 """
+
+from create_db import create_all_tables
+create_all_tables()
+
 import asyncio
 import logging
 import os
