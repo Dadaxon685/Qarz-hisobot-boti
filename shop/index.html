@@ -134,17 +134,41 @@ tbody td{padding:13px 22px;font-size:14px}
     <div class="login-card">
       <div class="login-logo">Qarz Tizimi</div>
       <div class="login-tag">MASKAN PANEL</div>
-      <div class="field">
-        <label>Telegram ID</label>
-        <input v-model="loginForm.telegram_id" type="number" placeholder="Telegram ID ingiz" @keyup.enter="doLogin"/>
+
+      <!-- 1-QADAM: Telefon raqam -->
+      <div v-if="loginStep===1">
+        <div class="field">
+          <label>Maskan telefon raqami</label>
+          <input v-model="loginForm.phone" type="tel"
+            placeholder="+998901234567" @keyup.enter="sendOtp"/>
+        </div>
+        <button class="btn-primary" @click="sendOtp" :disabled="loading">
+          {{ loading ? 'Yuborilmoqda...' : 'Kod olish →' }}
+        </button>
       </div>
-      <div class="field">
-        <label>Maxfiy Kod</label>
-        <input v-model="loginForm.secret" type="password" placeholder="Botdan olingan kod" @keyup.enter="doLogin"/>
+
+      <!-- 2-QADAM: OTP kod -->
+      <div v-if="loginStep===2">
+        <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--muted)">
+          📱 <b style="color:var(--text)">{{ loginForm.phone }}</b> raqami bilan bog'liq
+          Telegram akkauntiga 6 xonali kod yuborildi
+        </div>
+        <div class="field">
+          <label>Tasdiqlash kodi</label>
+          <input v-model="loginForm.code" type="text"
+            placeholder="123456" maxlength="6"
+            style="font-size:22px;letter-spacing:6px;text-align:center"
+            @keyup.enter="verifyOtp"/>
+        </div>
+        <button class="btn-primary" @click="verifyOtp" :disabled="loading">
+          {{ loading ? 'Tekshirilmoqda...' : 'Kirish →' }}
+        </button>
+        <button @click="loginStep=1; loginForm.code=''"
+          style="width:100%;margin-top:10px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px">
+          ← Raqamni o'zgartirish
+        </button>
       </div>
-      <button class="btn-primary" @click="doLogin" :disabled="loading">
-        {{ loading ? 'Tekshirilmoqda...' : 'Kirish →' }}
-      </button>
+
       <div v-if="loginError" class="error-msg">{{ loginError }}</div>
     </div>
   </div>
@@ -324,7 +348,8 @@ createApp({
       loading: false,
       loadingPage: false,
       loginError: '',
-      loginForm: { telegram_id:'', secret:'' },
+      loginStep: 1,
+      loginForm: { phone:'', code:'' },
       stats: { debt_count:0, total_debt:0, overdue_count:0 },
       debts: [],
       debtSearch: '',
@@ -357,16 +382,29 @@ createApp({
       if(res.status===401){ this.logout(); return null; }
       return res.json();
     },
-    async doLogin(){
+    async sendOtp(){
       this.loading=true; this.loginError='';
       try{
-        const res = await fetch(API+'/auth/login',{
+        const res = await fetch(API+'/auth/send-otp',{
           method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({telegram_id:parseInt(this.loginForm.telegram_id),secret:this.loginForm.secret})
+          body:JSON.stringify({phone: this.loginForm.phone})
         });
         const data = await res.json();
         if(!res.ok){ this.loginError=data.detail||'Xato'; return; }
-        if(data.role==='admin'){ this.loginError='Admin panel: admin/index.html'; return; }
+        this.loginStep=2;
+        this.showMsg('Kod yuborildi: '+data.shop_name);
+      }catch(e){ this.loginError='Server bilan aloqa yo\'q'; }
+      finally{ this.loading=false; }
+    },
+    async verifyOtp(){
+      this.loading=true; this.loginError='';
+      try{
+        const res = await fetch(API+'/auth/verify-otp',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({phone:this.loginForm.phone, code:this.loginForm.code})
+        });
+        const data = await res.json();
+        if(!res.ok){ this.loginError=data.detail||'Kod noto\'g\'ri'; return; }
         this.token=data.token;
         this.shopName=data.shop_name;
         localStorage.setItem('shop_token',data.token);
