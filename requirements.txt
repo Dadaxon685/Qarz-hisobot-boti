@@ -4,3 +4,4 @@ python-dotenv
 apscheduler
 openpyxl
 psycopg2-binary
+pg8000
