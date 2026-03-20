@@ -207,43 +207,100 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
         
         shop_id, shop_name = shop_res
 
-        # Mijozning TG ID sini qidirish
-        cursor.execute("SELECT customer_id FROM debts WHERE customer_phone = ? AND customer_id IS NOT NULL LIMIT 1", (data['customer_phone'],))
+        # ⭐ MUHIM: Telefon raqami orqali mijozning Telegram ID sini qidirish
+        cursor.execute("""
+            SELECT customer_id FROM debts 
+            WHERE customer_phone = ? AND customer_id IS NOT NULL 
+            LIMIT 1
+        """, (data['customer_phone'],))
         c_res = cursor.fetchone()
         c_id = c_res[0] if c_res else None
+        
+        # ⭐ YANGI: Agar bazada bo'lmasa, users jadvalidan qidirish
+        if not c_id:
+            cursor.execute("""
+                SELECT telegram_id FROM users 
+                WHERE phone = ?
+            """, (data['customer_phone'],))
+            user_res = cursor.fetchone()
+            c_id = user_res[0] if user_res else None
 
         # Mavjud qarzni tekshirish
-        cursor.execute("SELECT id, amount FROM debts WHERE shop_id = ? AND customer_phone = ? AND status = 'unpaid'", (shop_id, data['customer_phone']))
+        cursor.execute("""
+            SELECT id, amount FROM debts 
+            WHERE shop_id = ? AND customer_phone = ? AND status = 'unpaid'
+        """, (shop_id, data['customer_phone']))
         existing = cursor.fetchone()
 
         if existing:
             total = existing[1] + data['amount']
-            cursor.execute("UPDATE debts SET amount = ?, due_date = ?, debt_date = DATE('now'), customer_id = ? WHERE id = ?", 
-                           (total, data['due_date'], c_id, existing[0]))
+            cursor.execute("""
+                UPDATE debts 
+                SET amount = ?, due_date = ?, debt_date = DATE('now'), customer_id = ? 
+                WHERE id = ?
+            """, (total, data['due_date'], c_id, existing[0]))
             res_text = f"✅ Qarz yangilandi. Umumiy summa: <b>{total:,} so'm</b>"
         else:
-            cursor.execute("INSERT INTO debts (shop_id, customer_id, customer_phone, customer_name, amount, due_date, status, debt_date) VALUES (?,?,?,?,?,?,?, DATE('now'))",
-                           (shop_id, c_id, data['customer_phone'], data['customer_name'], data['amount'], data['due_date'], 'unpaid'))
+            cursor.execute("""
+                INSERT INTO debts 
+                (shop_id, customer_id, customer_phone, customer_name, amount, due_date, status, debt_date) 
+                VALUES (?,?,?,?,?,?,?, DATE('now'))
+            """, (shop_id, c_id, data['customer_phone'], data['customer_name'], 
+                  data['amount'], data['due_date'], 'unpaid'))
             res_text = "✅ Yangi qarz muvaffaqiyatli saqlandi."
 
         conn.commit()
         conn.close()
 
-        # Mijozga bildirishnoma yuborish
-        if c_id:
-            try:
-                await callback.bot.send_message(c_id, f"💰 Qarz hisobingiz yangilandi!\n🏪 {shop_name}\n➕ Qo'shildi: {data['amount']:,} so'm\n📅 Muddat: {data['due_date']}")
-            except: pass
-
         await callback.message.edit_text(res_text, parse_mode="HTML")
         
-    except Exception as e:
-        await callback.message.answer(f"❌ Xatolik: {e}")
+        # ⭐⭐⭐ ASOSIY O'ZGARISH: MIJOZGA DARHOL XABAR YUBORISH ⭐⭐⭐
+        if c_id:
+            try:
+                notification_text = (
+                    f"💰 <b>YANGI QARZ YOZILDI!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏪 <b>Maskan:</b> {shop_name}\n"
+                    f"👤 <b>Sizning ismingiz:</b> {data['customer_name']}\n"
+                    f"💵 <b>Qarz summasi:</b> {data['amount']:,} so'm\n"
+                    f"📅 <b>To'lov muddati:</b> {data['due_date']}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"⚠️ <i>Iltimos, muddatida to'lang!</i>"
+                )
+                
+                await callback.bot.send_message(
+                    chat_id=c_id, 
+                    text=notification_text,
+                    parse_mode="HTML"
+                )
+                
+                # Do'konchiga xabar yuborilganini bildirish
+                await callback.message.answer(
+                    f"📤 <b>{data['customer_name']}</b>ga Telegram orqali xabar yuborildi!",
+                    parse_mode="HTML"
+                )
+                
+            except Exception as e:
+                print(f"Xabar yuborishda xato: {e}")
+                await callback.message.answer(
+                    f"⚠️ Mijozga xabar yetib bormadi. "
+                    f"(Bot bloklangan yoki ID xato bo'lishi mumkin)"
+                )
+        else:
+            # Mijoz Telegramda ro'yxatdan o'tmagan
+            await callback.message.answer(
+                f"ℹ️ <b>{data['customer_name']}</b> hali botdan ro'yxatdan o'tmagan.\n"
+                f"Qarz saqlandi, lekin xabar yuborilmadi.",
+                parse_mode="HTML"
+            )
+
+    except Exception as db_error:
+        print(f"Baza xatosi: {db_error}")
+        await callback.message.answer(f"❌ Bazaga yozishda xatolik yuz berdi.")
     
     finally:
         await state.clear()
         await callback.answer()
-
 # --- QARZLAR RO'YXATI ---
 @shop_router.message(F.text == "📊 Qarzlar umumiy") # Maskanchi uchun
 async def shop_stats(message: Message):
