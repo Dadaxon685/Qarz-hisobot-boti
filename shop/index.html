@@ -9,39 +9,19 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#f5f4f0;
-  --surface:#ffffff;
-  --surface2:#f0efe9;
-  --surface3:#e8e7e0;
-  --border:#dddbd2;
-  --accent:#1a1a2e;
-  --accent2:#e63946;
-  --accent3:#2d6a4f;
-  --accent4:#e9c46a;
-  --text:#1a1a1a;
-  --muted:#6b6960;
-  --font-head:'Outfit',sans-serif;
-  --font-mono:'JetBrains Mono',monospace;
+  --bg:#f5f4f0; --surface:#ffffff; --surface2:#f0efe9; --surface3:#e8e7e0;
+  --border:#dddbd2; --accent:#1a1a2e; --accent2:#e63946; --accent3:#2d6a4f;
+  --accent4:#e9c46a; --text:#1a1a1a; --muted:#6b6960;
+  --font-head:'Outfit',sans-serif; --font-mono:'JetBrains Mono',monospace;
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font-head);min-height:100vh}
-
-/* LOGIN */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:48px;width:100%;max-width:400px;box-shadow:0 4px 32px rgba(0,0,0,.06)}
-.login-logo{font-size:32px;font-weight:800;color:var(--accent);margin-bottom:4px;letter-spacing:-.02em}
-.login-tag{display:inline-block;background:var(--accent);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px;margin-bottom:32px;font-weight:500;letter-spacing:.04em}
-.field{margin-bottom:18px}
-.field label{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
-.field input{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:var(--font-head);font-size:15px;outline:none;transition:.2s}
-.field input:focus{border-color:var(--accent);background:var(--surface)}
-.btn-primary{width:100%;background:var(--accent);border:none;border-radius:10px;padding:13px;color:#fff;font-family:var(--font-head);font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
-.btn-primary:hover{background:#2d2d4e;transform:translateY(-1px)}
-.error-msg{background:rgba(230,57,70,.08);border:1px solid rgba(230,57,70,.2);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--accent2);margin-top:14px}
-
-/* LAYOUT */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:48px;width:100%;max-width:400px;box-shadow:0 4px 32px rgba(0,0,0,.06);text-align:center}
+.login-logo{font-size:32px;font-weight:800;color:var(--accent);margin-bottom:4px;letter-spacing:-.02em;text-align:left}
+.login-tag{display:inline-block;background:var(--accent);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px;margin-bottom:28px;font-weight:500;letter-spacing:.04em}
+.login-desc{color:var(--muted);font-size:14px;margin-bottom:28px;line-height:1.6;text-align:left}
+.error-msg{background:rgba(230,57,70,.08);border:1px solid rgba(230,57,70,.2);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--accent2);margin-top:14px;text-align:left}
 .app-layout{display:flex;min-height:100vh}
-
-/* SIDEBAR */
 .sidebar{width:230px;background:var(--accent);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10}
 .sidebar-logo{padding:28px 20px 24px;color:#fff;font-size:17px;font-weight:800;letter-spacing:-.01em;border-bottom:1px solid rgba(255,255,255,.1)}
 .sidebar-logo span{display:block;font-size:11px;font-weight:400;opacity:.5;margin-top:3px;letter-spacing:.04em}
@@ -56,27 +36,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-head);min-hei
 .sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,.1)}
 .btn-logout{width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:9px;color:rgba(255,255,255,.7);font-size:12px;cursor:pointer;transition:.2s;font-family:var(--font-head)}
 .btn-logout:hover{background:rgba(255,255,255,.18);color:#fff}
-
-/* MAIN */
 .main{margin-left:230px;flex:1;padding:32px}
 .page-header{margin-bottom:28px;display:flex;align-items:flex-start;justify-content:space-between}
-.page-title{font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.page-title{font-size:24px;font-weight:800;letter-spacing:-.02em}
 .page-sub{color:var(--muted);font-size:13px;margin-top:3px}
-
-/* STAT CARDS */
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px}
 .stat-icon{font-size:20px;margin-bottom:10px}
 .stat-val{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1}
 .stat-label{font-size:11px;color:var(--muted);margin-top:5px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 .stat-card.danger .stat-val{color:var(--accent2)}
-.stat-card.success .stat-val{color:var(--accent3)}
-
-/* CARD */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
 .card-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
 .card-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
-.card-actions{display:flex;gap:10px;align-items:center}
 .search-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;color:var(--text);font-family:var(--font-head);font-size:13px;outline:none;width:200px;transition:.2s}
 .search-box:focus{border-color:var(--accent)}
 table{width:100%;border-collapse:collapse}
@@ -85,42 +57,33 @@ tbody tr{border-bottom:1px solid var(--border);transition:.1s}
 tbody tr:last-child{border-bottom:none}
 tbody tr:hover{background:var(--surface2)}
 tbody td{padding:13px 22px;font-size:14px}
-.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;text-transform:uppercase}
 .badge-green{background:rgba(45,106,79,.1);color:var(--accent3)}
 .badge-red{background:rgba(230,57,70,.1);color:var(--accent2)}
-.badge-orange{background:rgba(233,196,106,.2);color:#b07d00}
 .btn-sm{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:.15s;font-family:var(--font-head)}
 .btn-danger{background:rgba(230,57,70,.1);color:var(--accent2);border:1px solid rgba(230,57,70,.2)}
 .btn-success{background:rgba(45,106,79,.1);color:var(--accent3);border:1px solid rgba(45,106,79,.2)}
 .btn-add{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--font-head)}
 .btn-add:hover{background:#2d2d4e;transform:translateY(-1px)}
-
-/* MODAL */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(6px)}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.15)}
 .modal-title{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:24px}
 .modal-actions{display:flex;gap:10px;margin-top:22px;justify-content:flex-end}
-.btn-cancel{background:transparent;border:1.5px solid var(--border);border-radius:8px;padding:9px 18px;color:var(--muted);cursor:pointer;font-family:var(--font-head);font-size:14px;font-weight:500}
+.btn-cancel{background:transparent;border:1.5px solid var(--border);border-radius:8px;padding:9px 18px;color:var(--muted);cursor:pointer;font-family:var(--font-head);font-size:14px}
 .btn-cancel:hover{border-color:var(--text);color:var(--text)}
-
-/* AMOUNT */
+.field{margin-bottom:18px}
+.field label{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.field input{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:var(--font-head);font-size:15px;outline:none;transition:.2s}
+.field input:focus{border-color:var(--accent)}
 .amount{font-family:var(--font-mono);font-size:13px;font-weight:500}
 .amount-red{color:var(--accent2)}
-
-/* EMPTY */
 .empty{text-align:center;padding:50px 24px;color:var(--muted)}
 .empty-icon{font-size:40px;margin-bottom:10px;opacity:.4}
-
-/* LOADING */
 .loading{display:flex;align-items:center;justify-content:center;padding:50px;color:var(--muted);gap:10px}
 .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#fff;border-radius:12px;padding:13px 20px;font-size:14px;font-weight:500;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2);animation:slideIn .3s ease}
 @keyframes slideIn{from{transform:translateY(20px);opacity:0}}
-
-/* SCROLLBAR */
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -134,41 +97,9 @@ tbody td{padding:13px 22px;font-size:14px}
     <div class="login-card">
       <div class="login-logo">Qarz Tizimi</div>
       <div class="login-tag">MASKAN PANEL</div>
-
-      <!-- 1-QADAM: Telefon raqam -->
-      <div v-if="loginStep===1">
-        <div class="field">
-          <label>Maskan telefon raqami</label>
-          <input v-model="loginForm.phone" type="tel"
-            placeholder="+998901234567" @keyup.enter="sendOtp"/>
-        </div>
-        <button class="btn-primary" @click="sendOtp" :disabled="loading">
-          {{ loading ? 'Yuborilmoqda...' : 'Kod olish →' }}
-        </button>
-      </div>
-
-      <!-- 2-QADAM: OTP kod -->
-      <div v-if="loginStep===2">
-        <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--muted)">
-          📱 <b style="color:var(--text)">{{ loginForm.phone }}</b> raqami bilan bog'liq
-          Telegram akkauntiga 6 xonali kod yuborildi
-        </div>
-        <div class="field">
-          <label>Tasdiqlash kodi</label>
-          <input v-model="loginForm.code" type="text"
-            placeholder="123456" maxlength="6"
-            style="font-size:22px;letter-spacing:6px;text-align:center"
-            @keyup.enter="verifyOtp"/>
-        </div>
-        <button class="btn-primary" @click="verifyOtp" :disabled="loading">
-          {{ loading ? 'Tekshirilmoqda...' : 'Kirish →' }}
-        </button>
-        <button @click="loginStep=1; loginForm.code=''"
-          style="width:100%;margin-top:10px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px">
-          ← Raqamni o'zgartirish
-        </button>
-      </div>
-
+      <p class="login-desc">Telegram akkauntingiz orqali xavfsiz kiring 👇</p>
+      <div id="tg-login-btn" style="display:flex;justify-content:center;min-height:50px"></div>
+      <div v-if="loading" style="text-align:center;color:var(--muted);font-size:13px;margin-top:12px">Tekshirilmoqda...</div>
       <div v-if="loginError" class="error-msg">{{ loginError }}</div>
     </div>
   </div>
@@ -185,8 +116,7 @@ tbody td{padding:13px 22px;font-size:14px}
         <div v-for="item in navItems" :key="item.id"
           class="nav-item" :class="{active:page===item.id}"
           @click="page=item.id; loadPage()">
-          <span class="nav-icon">{{ item.icon }}</span>
-          {{ item.label }}
+          <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -195,7 +125,6 @@ tbody td{padding:13px 22px;font-size:14px}
     </aside>
 
     <main class="main">
-
       <!-- DASHBOARD -->
       <div v-if="page==='dashboard'">
         <div class="page-header">
@@ -208,23 +137,10 @@ tbody td{padding:13px 22px;font-size:14px}
         <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
         <div v-else>
           <div class="stats-grid">
-            <div class="stat-card danger">
-              <div class="stat-icon">💰</div>
-              <div class="stat-val">{{ stats.debt_count }}</div>
-              <div class="stat-label">Faol Qarzlar</div>
-            </div>
-            <div class="stat-card danger">
-              <div class="stat-icon">💵</div>
-              <div class="stat-val">{{ formatM(stats.total_debt) }}</div>
-              <div class="stat-label">Jami Qarz</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">🚨</div>
-              <div class="stat-val" style="color:var(--accent2)">{{ stats.overdue_count }}</div>
-              <div class="stat-label">Muddati O'tgan</div>
-            </div>
+            <div class="stat-card danger"><div class="stat-icon">💰</div><div class="stat-val">{{ stats.debt_count }}</div><div class="stat-label">Faol Qarzlar</div></div>
+            <div class="stat-card danger"><div class="stat-icon">💵</div><div class="stat-val">{{ formatM(stats.total_debt) }}</div><div class="stat-label">Jami Qarz</div></div>
+            <div class="stat-card"><div class="stat-icon">🚨</div><div class="stat-val" style="color:var(--accent2)">{{ stats.overdue_count }}</div><div class="stat-label">Muddati O'tgan</div></div>
           </div>
-          <!-- Oxirgi qarzlar -->
           <div class="card">
             <div class="card-head">
               <div class="card-title">Oxirgi Qarzlar</div>
@@ -239,9 +155,7 @@ tbody td{padding:13px 22px;font-size:14px}
                   <td style="color:var(--muted)">{{ d.customer_phone }}</td>
                   <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
                   <td>{{ d.due_date }}</td>
-                  <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
-                    {{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}
-                  </span></td>
+                  <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">{{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}</span></td>
                 </tr>
               </tbody>
             </table>
@@ -249,21 +163,16 @@ tbody td{padding:13px 22px;font-size:14px}
         </div>
       </div>
 
-      <!-- QARZLAR RO'YXATI -->
+      <!-- QARZLAR -->
       <div v-if="page==='debts'">
         <div class="page-header">
-          <div>
-            <div class="page-title">Qarzlar</div>
-            <div class="page-sub">Barcha mijozlar va qarzlar</div>
-          </div>
+          <div><div class="page-title">Qarzlar</div><div class="page-sub">Barcha mijozlar va qarzlar</div></div>
           <button class="btn-add" @click="showAddDebt=true">+ Yangi Qarz</button>
         </div>
         <div class="card">
           <div class="card-head">
             <div class="card-title">{{ filteredDebts.length }} ta</div>
-            <div class="card-actions">
-              <input class="search-box" v-model="debtSearch" placeholder="Qidirish..."/>
-            </div>
+            <input class="search-box" v-model="debtSearch" placeholder="Qidirish..."/>
           </div>
           <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
           <table v-else>
@@ -276,9 +185,7 @@ tbody td{padding:13px 22px;font-size:14px}
                 <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
                 <td>{{ d.due_date }}</td>
                 <td style="color:var(--muted);font-size:12px">{{ d.debt_date }}</td>
-                <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
-                  {{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}
-                </span></td>
+                <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">{{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}</span></td>
                 <td>
                   <div style="display:flex;gap:6px">
                     <button v-if="d.status==='unpaid'" class="btn-sm btn-success" @click="openPayment(d)">To'lov</button>
@@ -290,7 +197,6 @@ tbody td{padding:13px 22px;font-size:14px}
           </table>
         </div>
       </div>
-
     </main>
   </div>
 
@@ -304,7 +210,7 @@ tbody td{padding:13px 22px;font-size:14px}
       <div class="field"><label>To'lov muddati</label><input v-model="newDebt.due_date" placeholder="31.12.2025"/></div>
       <div class="modal-actions">
         <button class="btn-cancel" @click="showAddDebt=false">Bekor</button>
-        <button class="btn-primary" style="width:auto;padding:10px 24px" @click="addDebt">Saqlash</button>
+        <button class="btn-add" @click="addDebt">Saqlash</button>
       </div>
     </div>
   </div>
@@ -319,25 +225,48 @@ tbody td{padding:13px 22px;font-size:14px}
         <div class="amount amount-red" style="font-size:20px;margin-top:8px">{{ formatMoney(payTarget.amount) }}</div>
       </div>
       <div class="field"><label>To'lov miqdori</label><input v-model="payAmount" type="number" placeholder="50000"/></div>
-      <div style="display:flex;gap:10px;margin-bottom:16px">
-        <button class="btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)"
-          @click="payAmount=payTarget.amount">To'liq to'lash</button>
+      <div style="margin-bottom:16px">
+        <button class="btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" @click="payAmount=payTarget.amount">To'liq to'lash</button>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" @click="showPayment=false">Bekor</button>
-        <button class="btn-primary" style="width:auto;padding:10px 24px" @click="doPayment">Tasdiqlash</button>
+        <button class="btn-add" @click="doPayment">Tasdiqlash</button>
       </div>
     </div>
   </div>
 
-  <!-- TOAST -->
   <div v-if="toast" class="toast">{{ toast }}</div>
-
 </div>
 
 <script>
 const { createApp } = Vue;
 const API = 'https://qarz-hisobot-boti-production.up.railway.app';
+const BOT_USERNAME = 'qarz_hisobot_bot';
+
+window.onTelegramAuth = async function(user) {
+  const app = window.__vueApp;
+  if (!app) return;
+  app.loading = true;
+  app.loginError = '';
+  try {
+    const res = await fetch(API + '/auth/telegram-login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(user)
+    });
+    const data = await res.json();
+    if (!res.ok) { app.loginError = data.detail || 'Kirish xatosi'; return; }
+    app.token = data.token;
+    app.shopName = data.shop_name || data.name || 'Maskan';
+    localStorage.setItem('shop_token', data.token);
+    localStorage.setItem('shop_name', app.shopName);
+    app.loadPage();
+  } catch(e) {
+    app.loginError = 'Server bilan aloqa yo\'q';
+  } finally {
+    app.loading = false;
+  }
+};
 
 createApp({
   data(){
@@ -348,91 +277,84 @@ createApp({
       loading: false,
       loadingPage: false,
       loginError: '',
-      loginStep: 1,
-      loginForm: { phone:'', code:'' },
-      stats: { debt_count:0, total_debt:0, overdue_count:0 },
+      stats: {debt_count:0, total_debt:0, overdue_count:0},
       debts: [],
       debtSearch: '',
       showAddDebt: false,
       showPayment: false,
       payTarget: null,
       payAmount: '',
-      newDebt: { customer_phone:'', customer_name:'', amount:'', due_date:'' },
+      newDebt: {customer_phone:'', customer_name:'', amount:'', due_date:''},
       toast: '',
       navItems:[
-        { id:'dashboard', icon:'📊', label:'Bosh sahifa' },
-        { id:'debts',     icon:'💰', label:'Qarzlar' },
+        {id:'dashboard', icon:'📊', label:'Bosh sahifa'},
+        {id:'debts', icon:'💰', label:'Qarzlar'},
       ]
     }
   },
   computed:{
     filteredDebts(){
       if(!this.debtSearch) return this.debts;
-      const q=this.debtSearch.toLowerCase();
-      return this.debts.filter(d=>d.customer_name.toLowerCase().includes(q)||d.customer_phone.includes(q));
+      const q = this.debtSearch.toLowerCase();
+      return this.debts.filter(d => d.customer_name.toLowerCase().includes(q) || d.customer_phone.includes(q));
     }
   },
-  mounted(){ if(this.token) this.loadPage(); },
+  mounted(){
+    window.__vueApp = this;
+    if(this.token) {
+      this.loadPage();
+    } else {
+      this.$nextTick(() => this.loadWidget());
+    }
+  },
   methods:{
+    loadWidget(){
+      const el = document.getElementById('tg-login-btn');
+      if (!el || el.querySelector('script')) return;
+      const s = document.createElement('script');
+      s.src = 'https://telegram.org/js/telegram-widget.js?22';
+      s.setAttribute('data-telegram-login', BOT_USERNAME);
+      s.setAttribute('data-size', 'large');
+      s.setAttribute('data-radius', '10');
+      s.setAttribute('data-onauth', 'onTelegramAuth(user)');
+      s.setAttribute('data-request-access', 'write');
+      s.async = true;
+      el.appendChild(s);
+    },
     async api(method, path, body){
-      const res = await fetch(API+path,{
-        method, headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token},
+      const res = await fetch(API+path, {
+        method,
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token},
         body: body ? JSON.stringify(body) : undefined
       });
       if(res.status===401){ this.logout(); return null; }
       return res.json();
     },
-    async sendOtp(){
-      this.loading=true; this.loginError='';
-      try{
-        const res = await fetch(API+'/auth/send-otp',{
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({phone: this.loginForm.phone})
-        });
-        const data = await res.json();
-        if(!res.ok){ this.loginError=data.detail||'Xato'; return; }
-        this.loginStep=2;
-        this.showMsg('Kod yuborildi: '+data.shop_name);
-      }catch(e){ this.loginError='Server bilan aloqa yo\'q'; }
-      finally{ this.loading=false; }
+    logout(){
+      this.token = '';
+      localStorage.removeItem('shop_token');
+      localStorage.removeItem('shop_name');
+      this.$nextTick(() => this.loadWidget());
     },
-    async verifyOtp(){
-      this.loading=true; this.loginError='';
-      try{
-        const res = await fetch(API+'/auth/verify-otp',{
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({phone:this.loginForm.phone, code:this.loginForm.code})
-        });
-        const data = await res.json();
-        if(!res.ok){ this.loginError=data.detail||'Kod noto\'g\'ri'; return; }
-        this.token=data.token;
-        this.shopName=data.shop_name;
-        localStorage.setItem('shop_token',data.token);
-        localStorage.setItem('shop_name',data.shop_name);
-        this.loadPage();
-      }catch(e){ this.loginError='Server bilan aloqa yo\'q'; }
-      finally{ this.loading=false; }
-    },
-    logout(){ this.token=''; localStorage.removeItem('shop_token'); localStorage.removeItem('shop_name'); },
     async loadPage(){
-      this.loadingPage=true;
-      const [s,d] = await Promise.all([this.api('GET','/shop/stats'), this.api('GET','/shop/debts')]);
-      if(s) this.stats=s;
-      if(d) this.debts=d;
-      this.loadingPage=false;
+      this.loadingPage = true;
+      const [s, d] = await Promise.all([this.api('GET','/shop/stats'), this.api('GET','/shop/debts')]);
+      if(s) this.stats = s;
+      if(d) this.debts = d;
+      this.loadingPage = false;
     },
     async addDebt(){
       const res = await this.api('POST','/shop/debts',{
-        customer_phone:this.newDebt.customer_phone,
-        customer_name:this.newDebt.customer_name,
-        amount:parseFloat(this.newDebt.amount),
-        due_date:this.newDebt.due_date
+        customer_phone: this.newDebt.customer_phone,
+        customer_name: this.newDebt.customer_name,
+        amount: parseFloat(this.newDebt.amount),
+        due_date: this.newDebt.due_date
       });
       if(res){ this.showMsg(res.message); this.showAddDebt=false; this.newDebt={customer_phone:'',customer_name:'',amount:'',due_date:''}; this.loadPage(); }
     },
     openPayment(debt){ this.payTarget=debt; this.payAmount=''; this.showPayment=true; },
     async doPayment(){
-      const res = await this.api('POST','/shop/payment',{ debt_id:this.payTarget.id, amount:parseFloat(this.payAmount) });
+      const res = await this.api('POST','/shop/payment',{debt_id:this.payTarget.id, amount:parseFloat(this.payAmount)});
       if(res){ this.showMsg(res.message); this.showPayment=false; this.loadPage(); }
     },
     async deleteDebt(id){
