@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Qarz Tizimi — Admin Panel</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;
+  --surface:#111118;
+  --surface2:#1a1a24;
+  --surface3:#22222f;
+  --border:#2a2a3a;
+  --accent:#6c63ff;
+  --accent2:#ff6584;
+  --accent3:#43e97b;
+  --accent4:#f7971e;
+  --text:#e8e8f0;
+  --muted:#6b6b80;
+  --font-head:'Syne',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden}
+
+/* NOISE TEXTURE */
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.4}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative}
+.login-glow{position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(108,99,255,.15) 0%,transparent 70%);pointer-events:none}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:48px;width:100%;max-width:420px;position:relative;z-index:1}
+.login-logo{font-family:var(--font-head);font-size:28px;font-weight:800;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-sub{color:var(--muted);font-size:14px;margin-bottom:36px}
+.field{margin-bottom:20px}
+.field label{display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.field input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-family:var(--font-body);font-size:15px;outline:none;transition:.2s}
+.field input:focus{border-color:var(--accent)}
+.btn-primary{width:100%;background:var(--accent);border:none;border-radius:10px;padding:14px;color:#fff;font-family:var(--font-head);font-size:15px;font-weight:600;cursor:pointer;transition:.2s;letter-spacing:.02em}
+.btn-primary:hover{background:#7c75ff;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.error-msg{background:rgba(255,101,132,.1);border:1px solid rgba(255,101,132,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--accent2);margin-top:16px}
+
+/* LAYOUT */
+.app-layout{display:flex;min-height:100vh}
+
+/* SIDEBAR */
+.sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10}
+.sidebar-logo{padding:28px 24px 20px;font-family:var(--font-head);font-size:18px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;border-bottom:1px solid var(--border)}
+.sidebar-logo span{display:block;font-size:11px;color:var(--muted);font-family:var(--font-body);font-weight:400;-webkit-text-fill-color:var(--muted);margin-top:2px}
+.sidebar-nav{padding:16px 12px;flex:1}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;cursor:pointer;transition:.15s;color:var(--muted);font-size:14px;font-weight:500;margin-bottom:2px}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:rgba(108,99,255,.15);color:var(--accent)}
+.nav-icon{font-size:18px;width:22px;text-align:center}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border)}
+.user-badge{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--surface2)}
+.user-avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;font-family:var(--font-head)}
+.user-name{font-size:13px;font-weight:500}
+.user-role{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+.btn-logout{width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--muted);font-size:12px;cursor:pointer;transition:.2s}
+.btn-logout:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* MAIN CONTENT */
+.main{margin-left:240px;flex:1;padding:32px}
+.page-header{margin-bottom:32px}
+.page-title{font-family:var(--font-head);font-size:26px;font-weight:800}
+.page-sub{color:var(--muted);font-size:14px;margin-top:4px}
+
+/* STAT CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;transition:.2s}
+.stat-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.stat-card::after{content:'';position:absolute;top:0;right:0;width:80px;height:80px;border-radius:50%;opacity:.08;transform:translate(20px,-20px)}
+.stat-card:nth-child(1)::after{background:var(--accent)}
+.stat-card:nth-child(2)::after{background:var(--accent2)}
+.stat-card:nth-child(3)::after{background:var(--accent3)}
+.stat-card:nth-child(4)::after{background:var(--accent4)}
+.stat-icon{font-size:22px;margin-bottom:12px}
+.stat-val{font-family:var(--font-head);font-size:28px;font-weight:800;line-height:1}
+.stat-label{font-size:12px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.06em}
+
+/* TABLE */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.card-head{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.card-title{font-family:var(--font-head);font-size:16px;font-weight:700}
+.search-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none;width:220px;transition:.2s}
+.search-box:focus{border-color:var(--accent)}
+table{width:100%;border-collapse:collapse}
+thead th{padding:12px 24px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);background:var(--surface2)}
+tbody tr{border-bottom:1px solid var(--border);transition:.15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:14px 24px;font-size:14px}
+.badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500}
+.badge-green{background:rgba(67,233,123,.12);color:var(--accent3)}
+.badge-red{background:rgba(255,101,132,.12);color:var(--accent2)}
+.badge-yellow{background:rgba(247,151,30,.12);color:var(--accent4)}
+.btn-sm{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:.15s;font-family:var(--font-body)}
+.btn-danger{background:rgba(255,101,132,.15);color:var(--accent2)}
+.btn-danger:hover{background:rgba(255,101,132,.25)}
+.btn-add{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--font-body)}
+.btn-add:hover{background:#7c75ff}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px)}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;width:100%;max-width:480px}
+.modal-title{font-family:var(--font-head);font-size:20px;font-weight:700;margin-bottom:24px}
+.modal-actions{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
+.btn-cancel{background:transparent;border:1px solid var(--border);border-radius:8px;padding:10px 20px;color:var(--muted);cursor:pointer;font-family:var(--font-body);font-size:14px}
+.btn-cancel:hover{border-color:var(--text);color:var(--text)}
+
+/* EMPTY */
+.empty{text-align:center;padding:60px 24px;color:var(--muted)}
+.empty-icon{font-size:48px;margin-bottom:12px;opacity:.4}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--muted);gap:10px}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* AMOUNT */
+.amount{font-family:var(--font-head);font-weight:600}
+.amount-red{color:var(--accent2)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 20px;font-size:14px;z-index:999;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:slideIn .3s ease}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <div v-if="!token" class="login-wrap">
+    <div class="login-glow"></div>
+    <div class="login-card">
+      <div class="login-logo">Qarz Tizimi</div>
+      <div class="login-sub">Admin boshqaruv paneli</div>
+      <div class="field">
+        <label>Telegram ID</label>
+        <input v-model="loginForm.telegram_id" type="number" placeholder="5148276461" @keyup.enter="doLogin"/>
+      </div>
+      <div class="field">
+        <label>Maxfiy Kod</label>
+        <input v-model="loginForm.secret" type="password" placeholder="Botdan olingan kod" @keyup.enter="doLogin"/>
+      </div>
+      <button class="btn-primary" @click="doLogin" :disabled="loading">
+        {{ loading ? 'Tekshirilmoqda...' : 'Kirish' }}
+      </button>
+      <div v-if="loginError" class="error-msg">{{ loginError }}</div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div v-else class="app-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        Qarz Tizimi
+        <span>Admin Panel</span>
+      </div>
+      <nav class="sidebar-nav">
+        <div v-for="item in navItems" :key="item.id"
+          class="nav-item" :class="{active: page===item.id}"
+          @click="page=item.id; loadPage()">
+          <span class="nav-icon">{{ item.icon }}</span>
+          {{ item.label }}
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-badge">
+          <div class="user-avatar">A</div>
+          <div>
+            <div class="user-name">Super Admin</div>
+            <div class="user-role">Admin</div>
+          </div>
+        </div>
+        <button class="btn-logout" @click="logout">Chiqish</button>
+      </div>
+    </aside>
+
+    <!-- CONTENT -->
+    <main class="main">
+
+      <!-- DASHBOARD -->
+      <div v-if="page==='dashboard'">
+        <div class="page-header">
+          <div class="page-title">Bosh Sahifa</div>
+          <div class="page-sub">Tizimning umumiy holati</div>
+        </div>
+        <div v-if="loadingPage" class="loading"><div class="spinner"></div> Yuklanmoqda...</div>
+        <div v-else>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">🏪</div>
+              <div class="stat-val">{{ stats.shops }}</div>
+              <div class="stat-label">Maskanlar</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💰</div>
+              <div class="stat-val">{{ stats.debts_count }}</div>
+              <div class="stat-label">Faol Qarzlar</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💵</div>
+              <div class="stat-val">{{ formatMoney(stats.total_debt) }}</div>
+              <div class="stat-label">Jami Qarz (so'm)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">👥</div>
+              <div class="stat-val">{{ stats.customers }}</div>
+              <div class="stat-label">Mijozlar</div>
+            </div>
+          </div>
+
+          <!-- Latest debts -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Oxirgi Qarzlar</div>
+            </div>
+            <table>
+              <thead><tr>
+                <th>Mijoz</th><th>Telefon</th><th>Maskan</th><th>Summa</th><th>Muddat</th><th>Holat</th>
+              </tr></thead>
+              <tbody>
+                <tr v-if="debts.length===0"><td colspan="6"><div class="empty"><div class="empty-icon">📭</div>Qarzlar yo'q</div></td></tr>
+                <tr v-for="d in debts.slice(0,10)" :key="d.id">
+                  <td>{{ d.customer_name }}</td>
+                  <td>{{ d.customer_phone }}</td>
+                  <td>{{ d.shop_name }}</td>
+                  <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
+                  <td>{{ d.due_date }}</td>
+                  <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
+                    {{ d.status==='unpaid' ? "To'lanmagan" : "To'langan" }}
+                  </span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MASKANLAR -->
+      <div v-if="page==='shops'">
+        <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="page-title">Maskanlar</div>
+            <div class="page-sub">Barcha ro'yxatdagi maskanlar</div>
+          </div>
+          <button class="btn-add" @click="showAddShop=true">+ Maskan qo'shish</button>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Jami: {{ shops.length }} ta</div>
+            <input class="search-box" v-model="shopSearch" placeholder="Qidirish..."/>
+          </div>
+          <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
+          <table v-else>
+            <thead><tr><th>ID</th><th>Nomi</th><th>Egasi (ID)</th><th>Telefon</th><th>Manzil</th><th>Qarzlar</th><th>Jami Qarz</th><th></th></tr></thead>
+            <tbody>
+              <tr v-if="filteredShops.length===0"><td colspan="8"><div class="empty"><div class="empty-icon">🏪</div>Maskanlar yo'q</div></td></tr>
+              <tr v-for="s in filteredShops" :key="s.id">
+                <td style="color:var(--muted);font-size:12px">#{{ s.id }}</td>
+                <td style="font-weight:500">{{ s.name }}</td>
+                <td style="font-family:monospace;font-size:12px">{{ s.owner_id }}</td>
+                <td>{{ s.phone }}</td>
+                <td style="color:var(--muted);font-size:13px">{{ s.address }}</td>
+                <td><span class="badge badge-yellow">{{ s.debt_count }} ta</span></td>
+                <td class="amount amount-red">{{ formatMoney(s.total_debt) }}</td>
+                <td><button class="btn-sm btn-danger" @click="deleteShop(s.id)">O'chirish</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BARCHA QARZLAR -->
+      <div v-if="page==='debts'">
+        <div class="page-header">
+          <div class="page-title">Barcha Qarzlar</div>
+          <div class="page-sub">Tizimidagi barcha qarzlar</div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">{{ debts.length }} ta qarz</div>
+            <input class="search-box" v-model="debtSearch" placeholder="Mijoz, telefon..."/>
+          </div>
+          <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
+          <table v-else>
+            <thead><tr><th>Mijoz</th><th>Telefon</th><th>Maskan</th><th>Summa</th><th>Muddat</th><th>Sana</th><th>Holat</th></tr></thead>
+            <tbody>
+              <tr v-if="filteredDebts.length===0"><td colspan="7"><div class="empty"><div class="empty-icon">📭</div>Qarzlar topilmadi</div></td></tr>
+              <tr v-for="d in filteredDebts" :key="d.id">
+                <td style="font-weight:500">{{ d.customer_name }}</td>
+                <td>{{ d.customer_phone }}</td>
+                <td><span class="badge badge-yellow">{{ d.shop_name }}</span></td>
+                <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
+                <td>{{ d.due_date }}</td>
+                <td style="color:var(--muted);font-size:12px">{{ d.debt_date }}</td>
+                <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
+                  {{ d.status==='unpaid' ? "To'lanmagan" : "To'langan" }}
+                </span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ADD SHOP MODAL -->
+  <div v-if="showAddShop" class="modal-bg" @click.self="showAddShop=false">
+    <div class="modal">
+      <div class="modal-title">Yangi Maskan Qo'shish</div>
+      <div class="field"><label>Maskan nomi</label><input v-model="newShop.name" placeholder="Do'kon nomi"/></div>
+      <div class="field"><label>Egasi Telegram ID</label><input v-model="newShop.owner_id" type="number" placeholder="123456789"/></div>
+      <div class="field"><label>Telefon</label><input v-model="newShop.phone" placeholder="+998901234567"/></div>
+      <div class="field"><label>Manzil</label><input v-model="newShop.address" placeholder="Toshkent, Chilonzor..."/></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="showAddShop=false">Bekor</button>
+        <button class="btn-primary" style="width:auto;padding:10px 24px" @click="addShop">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div v-if="toast" class="toast">{{ toast }}</div>
+
+</div>
+
+<script>
+const { createApp } = Vue;
+const API = 'http://localhost:8000';
+
+createApp({
+  data(){
+    return {
+      token: localStorage.getItem('admin_token') || '',
+      page: 'dashboard',
+      loading: false,
+      loadingPage: false,
+      loginError: '',
+      loginForm: { telegram_id:'', secret:'' },
+      stats: { shops:0, debts_count:0, total_debt:0, customers:0 },
+      shops: [],
+      debts: [],
+      shopSearch: '',
+      debtSearch: '',
+      showAddShop: false,
+      newShop: { name:'', owner_id:'', phone:'', address:'' },
+      toast: '',
+      navItems: [
+        { id:'dashboard', icon:'📊', label:'Bosh sahifa' },
+        { id:'shops',     icon:'🏪', label:'Maskanlar' },
+        { id:'debts',     icon:'💰', label:'Barcha qarzlar' },
+      ]
+    }
+  },
+  computed:{
+    filteredShops(){
+      if(!this.shopSearch) return this.shops;
+      const q = this.shopSearch.toLowerCase();
+      return this.shops.filter(s => s.name.toLowerCase().includes(q) || String(s.owner_id).includes(q));
+    },
+    filteredDebts(){
+      if(!this.debtSearch) return this.debts;
+      const q = this.debtSearch.toLowerCase();
+      return this.debts.filter(d =>
+        d.customer_name.toLowerCase().includes(q) ||
+        d.customer_phone.includes(q) ||
+        d.shop_name.toLowerCase().includes(q)
+      );
+    }
+  },
+  mounted(){
+    if(this.token) this.loadPage();
+  },
+  methods:{
+    async api(method, path, body){
+      const res = await fetch(API+path,{
+        method, headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token},
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if(res.status===401){ this.logout(); return null; }
+      return res.json();
+    },
+    async doLogin(){
+      this.loading = true; this.loginError = '';
+      try{
+        const res = await fetch(API+'/auth/login',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({telegram_id:parseInt(this.loginForm.telegram_id), secret:this.loginForm.secret})
+        });
+        const data = await res.json();
+        if(!res.ok){ this.loginError = data.detail || 'Xato'; return; }
+        if(data.role !== 'admin'){ this.loginError = 'Siz admin emassiz'; return; }
+        this.token = data.token;
+        localStorage.setItem('admin_token', data.token);
+        this.loadPage();
+      }catch(e){ this.loginError = 'Server bilan aloqa yo\'q'; }
+      finally{ this.loading = false; }
+    },
+    logout(){
+      this.token=''; localStorage.removeItem('admin_token');
+    },
+    async loadPage(){
+      this.loadingPage = true;
+      if(this.page==='dashboard'){
+        const [s,d] = await Promise.all([this.api('GET','/admin/stats'), this.api('GET','/admin/debts')]);
+        if(s) this.stats = s;
+        if(d) this.debts = d;
+      } else if(this.page==='shops'){
+        const s = await this.api('GET','/admin/shops');
+        if(s) this.shops = s;
+      } else if(this.page==='debts'){
+        const d = await this.api('GET','/admin/debts');
+        if(d) this.debts = d;
+      }
+      this.loadingPage = false;
+    },
+    async addShop(){
+      const res = await this.api('POST','/admin/shops',{
+        name:this.newShop.name, owner_id:parseInt(this.newShop.owner_id),
+        phone:this.newShop.phone, address:this.newShop.address
+      });
+      if(res){ this.showShop(res.message); this.showAddShop=false; this.newShop={name:'',owner_id:'',phone:'',address:''}; this.loadPage(); }
+    },
+    async deleteShop(id){
+      if(!confirm('Rostdan o\'chirasizmi?')) return;
+      await this.api('DELETE','/admin/shops/'+id);
+      this.showShop('Maskan o\'chirildi'); this.loadPage();
+    },
+    formatMoney(n){ return Number(n||0).toLocaleString('uz-UZ') + ' so\'m'; },
+    showShop(msg){ this.toast=msg; setTimeout(()=>this.toast='',3000); }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

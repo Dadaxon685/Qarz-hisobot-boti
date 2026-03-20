@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Qarz Tizimi — Maskan Panel</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#f5f4f0;
+  --surface:#ffffff;
+  --surface2:#f0efe9;
+  --surface3:#e8e7e0;
+  --border:#dddbd2;
+  --accent:#1a1a2e;
+  --accent2:#e63946;
+  --accent3:#2d6a4f;
+  --accent4:#e9c46a;
+  --text:#1a1a1a;
+  --muted:#6b6960;
+  --font-head:'Outfit',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-head);min-height:100vh}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:48px;width:100%;max-width:400px;box-shadow:0 4px 32px rgba(0,0,0,.06)}
+.login-logo{font-size:32px;font-weight:800;color:var(--accent);margin-bottom:4px;letter-spacing:-.02em}
+.login-tag{display:inline-block;background:var(--accent);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px;margin-bottom:32px;font-weight:500;letter-spacing:.04em}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.field input{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:var(--font-head);font-size:15px;outline:none;transition:.2s}
+.field input:focus{border-color:var(--accent);background:var(--surface)}
+.btn-primary{width:100%;background:var(--accent);border:none;border-radius:10px;padding:13px;color:#fff;font-family:var(--font-head);font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
+.btn-primary:hover{background:#2d2d4e;transform:translateY(-1px)}
+.error-msg{background:rgba(230,57,70,.08);border:1px solid rgba(230,57,70,.2);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--accent2);margin-top:14px}
+
+/* LAYOUT */
+.app-layout{display:flex;min-height:100vh}
+
+/* SIDEBAR */
+.sidebar{width:230px;background:var(--accent);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:10}
+.sidebar-logo{padding:28px 20px 24px;color:#fff;font-size:17px;font-weight:800;letter-spacing:-.01em;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-logo span{display:block;font-size:11px;font-weight:400;opacity:.5;margin-top:3px;letter-spacing:.04em}
+.sidebar-shop{padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.1)}
+.shop-name{color:#fff;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shop-label{font-size:11px;opacity:.4;color:#fff;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+.sidebar-nav{padding:12px 10px;flex:1}
+.nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:.15s;color:rgba(255,255,255,.6);font-size:14px;font-weight:500;margin-bottom:2px}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:rgba(255,255,255,.15);color:#fff}
+.nav-icon{font-size:16px;width:20px;text-align:center}
+.sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,.1)}
+.btn-logout{width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:9px;color:rgba(255,255,255,.7);font-size:12px;cursor:pointer;transition:.2s;font-family:var(--font-head)}
+.btn-logout:hover{background:rgba(255,255,255,.18);color:#fff}
+
+/* MAIN */
+.main{margin-left:230px;flex:1;padding:32px}
+.page-header{margin-bottom:28px;display:flex;align-items:flex-start;justify-content:space-between}
+.page-title{font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.page-sub{color:var(--muted);font-size:13px;margin-top:3px}
+
+/* STAT CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px}
+.stat-icon{font-size:20px;margin-bottom:10px}
+.stat-val{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.stat-label{font-size:11px;color:var(--muted);margin-top:5px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.stat-card.danger .stat-val{color:var(--accent2)}
+.stat-card.success .stat-val{color:var(--accent3)}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.card-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.card-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.card-actions{display:flex;gap:10px;align-items:center}
+.search-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;color:var(--text);font-family:var(--font-head);font-size:13px;outline:none;width:200px;transition:.2s}
+.search-box:focus{border-color:var(--accent)}
+table{width:100%;border-collapse:collapse}
+thead th{padding:11px 22px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;background:var(--surface2);border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:.1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:13px 22px;font-size:14px}
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.badge-green{background:rgba(45,106,79,.1);color:var(--accent3)}
+.badge-red{background:rgba(230,57,70,.1);color:var(--accent2)}
+.badge-orange{background:rgba(233,196,106,.2);color:#b07d00}
+.btn-sm{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:.15s;font-family:var(--font-head)}
+.btn-danger{background:rgba(230,57,70,.1);color:var(--accent2);border:1px solid rgba(230,57,70,.2)}
+.btn-success{background:rgba(45,106,79,.1);color:var(--accent3);border:1px solid rgba(45,106,79,.2)}
+.btn-add{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--font-head)}
+.btn-add:hover{background:#2d2d4e;transform:translateY(-1px)}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(6px)}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+.modal-title{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:24px}
+.modal-actions{display:flex;gap:10px;margin-top:22px;justify-content:flex-end}
+.btn-cancel{background:transparent;border:1.5px solid var(--border);border-radius:8px;padding:9px 18px;color:var(--muted);cursor:pointer;font-family:var(--font-head);font-size:14px;font-weight:500}
+.btn-cancel:hover{border-color:var(--text);color:var(--text)}
+
+/* AMOUNT */
+.amount{font-family:var(--font-mono);font-size:13px;font-weight:500}
+.amount-red{color:var(--accent2)}
+
+/* EMPTY */
+.empty{text-align:center;padding:50px 24px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:10px;opacity:.4}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;padding:50px;color:var(--muted);gap:10px}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#fff;border-radius:12px;padding:13px 20px;font-size:14px;font-weight:500;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2);animation:slideIn .3s ease}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN -->
+  <div v-if="!token" class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">Qarz Tizimi</div>
+      <div class="login-tag">MASKAN PANEL</div>
+      <div class="field">
+        <label>Telegram ID</label>
+        <input v-model="loginForm.telegram_id" type="number" placeholder="Telegram ID ingiz" @keyup.enter="doLogin"/>
+      </div>
+      <div class="field">
+        <label>Maxfiy Kod</label>
+        <input v-model="loginForm.secret" type="password" placeholder="Botdan olingan kod" @keyup.enter="doLogin"/>
+      </div>
+      <button class="btn-primary" @click="doLogin" :disabled="loading">
+        {{ loading ? 'Tekshirilmoqda...' : 'Kirish →' }}
+      </button>
+      <div v-if="loginError" class="error-msg">{{ loginError }}</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div v-else class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">Qarz Tizimi <span>MASKAN PANELI</span></div>
+      <div class="sidebar-shop">
+        <div class="shop-name">{{ shopName }}</div>
+        <div class="shop-label">Sizning Maskaningiz</div>
+      </div>
+      <nav class="sidebar-nav">
+        <div v-for="item in navItems" :key="item.id"
+          class="nav-item" :class="{active:page===item.id}"
+          @click="page=item.id; loadPage()">
+          <span class="nav-icon">{{ item.icon }}</span>
+          {{ item.label }}
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-logout" @click="logout">← Chiqish</button>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <!-- DASHBOARD -->
+      <div v-if="page==='dashboard'">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Xush kelibsiz 👋</div>
+            <div class="page-sub">{{ shopName }} — bugungi holat</div>
+          </div>
+          <button class="btn-add" @click="page='debts'; showAddDebt=true">+ Yangi Qarz</button>
+        </div>
+        <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
+        <div v-else>
+          <div class="stats-grid">
+            <div class="stat-card danger">
+              <div class="stat-icon">💰</div>
+              <div class="stat-val">{{ stats.debt_count }}</div>
+              <div class="stat-label">Faol Qarzlar</div>
+            </div>
+            <div class="stat-card danger">
+              <div class="stat-icon">💵</div>
+              <div class="stat-val">{{ formatM(stats.total_debt) }}</div>
+              <div class="stat-label">Jami Qarz</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🚨</div>
+              <div class="stat-val" style="color:var(--accent2)">{{ stats.overdue_count }}</div>
+              <div class="stat-label">Muddati O'tgan</div>
+            </div>
+          </div>
+          <!-- Oxirgi qarzlar -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Oxirgi Qarzlar</div>
+              <button class="btn-add" style="font-size:12px;padding:7px 14px" @click="page='debts';loadPage()">Barchasini ko'rish →</button>
+            </div>
+            <table>
+              <thead><tr><th>Mijoz</th><th>Telefon</th><th>Summa</th><th>Muddat</th><th>Holat</th></tr></thead>
+              <tbody>
+                <tr v-if="!debts.length"><td colspan="5"><div class="empty"><div class="empty-icon">📭</div>Hozircha qarz yo'q</div></td></tr>
+                <tr v-for="d in debts.slice(0,8)" :key="d.id">
+                  <td style="font-weight:600">{{ d.customer_name }}</td>
+                  <td style="color:var(--muted)">{{ d.customer_phone }}</td>
+                  <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
+                  <td>{{ d.due_date }}</td>
+                  <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
+                    {{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}
+                  </span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- QARZLAR RO'YXATI -->
+      <div v-if="page==='debts'">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Qarzlar</div>
+            <div class="page-sub">Barcha mijozlar va qarzlar</div>
+          </div>
+          <button class="btn-add" @click="showAddDebt=true">+ Yangi Qarz</button>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">{{ filteredDebts.length }} ta</div>
+            <div class="card-actions">
+              <input class="search-box" v-model="debtSearch" placeholder="Qidirish..."/>
+            </div>
+          </div>
+          <div v-if="loadingPage" class="loading"><div class="spinner"></div></div>
+          <table v-else>
+            <thead><tr><th>Mijoz</th><th>Telefon</th><th>Summa</th><th>Muddat</th><th>Sana</th><th>Holat</th><th>Amal</th></tr></thead>
+            <tbody>
+              <tr v-if="!filteredDebts.length"><td colspan="7"><div class="empty"><div class="empty-icon">📭</div>Qarz topilmadi</div></td></tr>
+              <tr v-for="d in filteredDebts" :key="d.id">
+                <td style="font-weight:600">{{ d.customer_name }}</td>
+                <td style="color:var(--muted);font-size:13px">{{ d.customer_phone }}</td>
+                <td class="amount amount-red">{{ formatMoney(d.amount) }}</td>
+                <td>{{ d.due_date }}</td>
+                <td style="color:var(--muted);font-size:12px">{{ d.debt_date }}</td>
+                <td><span class="badge" :class="d.status==='unpaid'?'badge-red':'badge-green'">
+                  {{ d.status==='unpaid'?'To\'lanmagan':'To\'langan' }}
+                </span></td>
+                <td>
+                  <div style="display:flex;gap:6px">
+                    <button v-if="d.status==='unpaid'" class="btn-sm btn-success" @click="openPayment(d)">To'lov</button>
+                    <button class="btn-sm btn-danger" @click="deleteDebt(d.id)">O'chir</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ADD DEBT MODAL -->
+  <div v-if="showAddDebt" class="modal-bg" @click.self="showAddDebt=false">
+    <div class="modal">
+      <div class="modal-title">Yangi Qarz Yozish</div>
+      <div class="field"><label>Telefon raqam</label><input v-model="newDebt.customer_phone" placeholder="+998901234567"/></div>
+      <div class="field"><label>Mijoz ismi</label><input v-model="newDebt.customer_name" placeholder="Ismi Familiyasi"/></div>
+      <div class="field"><label>Summa (so'm)</label><input v-model="newDebt.amount" type="number" placeholder="100000"/></div>
+      <div class="field"><label>To'lov muddati</label><input v-model="newDebt.due_date" placeholder="31.12.2025"/></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="showAddDebt=false">Bekor</button>
+        <button class="btn-primary" style="width:auto;padding:10px 24px" @click="addDebt">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAYMENT MODAL -->
+  <div v-if="showPayment" class="modal-bg" @click.self="showPayment=false">
+    <div class="modal">
+      <div class="modal-title">To'lov Qabul Qilish</div>
+      <div v-if="payTarget" style="background:var(--surface2);border-radius:12px;padding:16px;margin-bottom:20px">
+        <div style="font-weight:700;font-size:15px">{{ payTarget.customer_name }}</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px">{{ payTarget.customer_phone }}</div>
+        <div class="amount amount-red" style="font-size:20px;margin-top:8px">{{ formatMoney(payTarget.amount) }}</div>
+      </div>
+      <div class="field"><label>To'lov miqdori</label><input v-model="payAmount" type="number" placeholder="50000"/></div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)"
+          @click="payAmount=payTarget.amount">To'liq to'lash</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="showPayment=false">Bekor</button>
+        <button class="btn-primary" style="width:auto;padding:10px 24px" @click="doPayment">Tasdiqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div v-if="toast" class="toast">{{ toast }}</div>
+
+</div>
+
+<script>
+const { createApp } = Vue;
+const API = 'http://localhost:8000';
+
+createApp({
+  data(){
+    return {
+      token: localStorage.getItem('shop_token') || '',
+      shopName: localStorage.getItem('shop_name') || 'Maskan',
+      page: 'dashboard',
+      loading: false,
+      loadingPage: false,
+      loginError: '',
+      loginForm: { telegram_id:'', secret:'' },
+      stats: { debt_count:0, total_debt:0, overdue_count:0 },
+      debts: [],
+      debtSearch: '',
+      showAddDebt: false,
+      showPayment: false,
+      payTarget: null,
+      payAmount: '',
+      newDebt: { customer_phone:'', customer_name:'', amount:'', due_date:'' },
+      toast: '',
+      navItems:[
+        { id:'dashboard', icon:'📊', label:'Bosh sahifa' },
+        { id:'debts',     icon:'💰', label:'Qarzlar' },
+      ]
+    }
+  },
+  computed:{
+    filteredDebts(){
+      if(!this.debtSearch) return this.debts;
+      const q=this.debtSearch.toLowerCase();
+      return this.debts.filter(d=>d.customer_name.toLowerCase().includes(q)||d.customer_phone.includes(q));
+    }
+  },
+  mounted(){ if(this.token) this.loadPage(); },
+  methods:{
+    async api(method, path, body){
+      const res = await fetch(API+path,{
+        method, headers:{'Content-Type':'application/json','Authorization':'Bearer '+this.token},
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if(res.status===401){ this.logout(); return null; }
+      return res.json();
+    },
+    async doLogin(){
+      this.loading=true; this.loginError='';
+      try{
+        const res = await fetch(API+'/auth/login',{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({telegram_id:parseInt(this.loginForm.telegram_id),secret:this.loginForm.secret})
+        });
+        const data = await res.json();
+        if(!res.ok){ this.loginError=data.detail||'Xato'; return; }
+        if(data.role==='admin'){ this.loginError='Admin panel: admin/index.html'; return; }
+        this.token=data.token;
+        this.shopName=data.shop_name;
+        localStorage.setItem('shop_token',data.token);
+        localStorage.setItem('shop_name',data.shop_name);
+        this.loadPage();
+      }catch(e){ this.loginError='Server bilan aloqa yo\'q'; }
+      finally{ this.loading=false; }
+    },
+    logout(){ this.token=''; localStorage.removeItem('shop_token'); localStorage.removeItem('shop_name'); },
+    async loadPage(){
+      this.loadingPage=true;
+      const [s,d] = await Promise.all([this.api('GET','/shop/stats'), this.api('GET','/shop/debts')]);
+      if(s) this.stats=s;
+      if(d) this.debts=d;
+      this.loadingPage=false;
+    },
+    async addDebt(){
+      const res = await this.api('POST','/shop/debts',{
+        customer_phone:this.newDebt.customer_phone,
+        customer_name:this.newDebt.customer_name,
+        amount:parseFloat(this.newDebt.amount),
+        due_date:this.newDebt.due_date
+      });
+      if(res){ this.showMsg(res.message); this.showAddDebt=false; this.newDebt={customer_phone:'',customer_name:'',amount:'',due_date:''}; this.loadPage(); }
+    },
+    openPayment(debt){ this.payTarget=debt; this.payAmount=''; this.showPayment=true; },
+    async doPayment(){
+      const res = await this.api('POST','/shop/payment',{ debt_id:this.payTarget.id, amount:parseFloat(this.payAmount) });
+      if(res){ this.showMsg(res.message); this.showPayment=false; this.loadPage(); }
+    },
+    async deleteDebt(id){
+      if(!confirm('O\'chirasizmi?')) return;
+      await this.api('DELETE','/shop/debts/'+id);
+      this.showMsg("O'chirildi"); this.loadPage();
+    },
+    formatMoney(n){ return Number(n||0).toLocaleString('uz-UZ')+' so\'m'; },
+    formatM(n){ const v=Number(n||0); return v>=1000000?(v/1000000).toFixed(1)+'M':v.toLocaleString(); },
+    showMsg(msg){ this.toast=msg; setTimeout(()=>this.toast='',3000); }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

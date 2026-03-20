@@ -1,22 +1,29 @@
 import asyncio
-import sqlite3
 import re
-# import d
-# at000+00etime
-from datetime import datetime
-
+import io
 import logging
+from datetime import datetime
+from openpyxl import Workbook
+
 from aiogram import Router, F, types
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message, ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
+
 from states import PaymentStates, ShopSearchStates, ShopBroadcast
-# API_TOKEN = '8340168068:AAE126I8LCTcEcGfrAh9pqJ2c7cB4Ih7fJs'
 from buttons import shop_keyboard
+
+# SQLite o'rniga PostgreSQL ulanishini ishlatamiz
+from handlers.connections import get_connection
+
 SUPER_ADMIN_ID = 5148276461
 shop_router = Router()
 
-# --- MaskanCHI HOLATLARI ---
+
+# --- MASKANCHI HOLATLARI ---
 class DebtAdd(StatesGroup):
     customer_phone = State()
     found_existing = State()
@@ -25,105 +32,132 @@ class DebtAdd(StatesGroup):
     due_date = State()
     confirm = State()
 
-# --- MaskanCHI KLAVIATURASI ---
+
+# --- BEKOR QILISH KLAVIATURASI ---
 def cancel_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🚫 Bekor qilish")]
-    ], resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🚫 Bekor qilish")]],
+        resize_keyboard=True
+    )
+
+
+# ============================================================
+# QARZ YOZISH
+# ============================================================
 
 @shop_router.message(F.text == "➕ Qarz yozish")
 async def debt_start(message: Message, state: FSMContext):
     await state.set_state(DebtAdd.customer_phone)
-    # Asosiy menyu o'rniga faqat bekor qilish tugmasi chiqadi
     await message.answer(
         "📞 Qarzdorning telefon raqamini kiriting (masalan: +998901234567):",
         reply_markup=cancel_keyboard()
     )
 
+
 @shop_router.message(F.text == "🚫 Bekor qilish")
 async def cancel_action(message: Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
-        return # Agar hech qanday jarayon bo'lmasa, javob bermaymiz
-
+        return
     await state.clear()
-    await message.answer(
-        "📥 Jarayon bekor qilindi.", 
-        reply_markup=shop_keyboard() # Asosiy menyu qaytadi
-    )
+    await message.answer("📥 Jarayon bekor qilindi.", reply_markup=shop_keyboard())
 
-# --- 2. RAQAMNI TEKSHIRISH VA BAZADAN QIDIRISH ---
+
 @shop_router.message(DebtAdd.customer_phone)
 async def debt_phone_check(message: Message, state: FSMContext):
     phone = message.text.strip()
-    
+
     if not re.match(r'^\+?998\d{9}$', phone):
-        return await message.answer("❌ Xato format!\nNamuna: <code>+998901234567</code>", parse_mode="HTML")
-    
-    if not phone.startswith('+'): phone = '+' + phone
+        return await message.answer(
+            "❌ Xato format!\nNamuna: <code>+998901234567</code>",
+            parse_mode="HTML"
+        )
+
+    if not phone.startswith('+'):
+        phone = '+' + phone
     await state.update_data(customer_phone=phone)
-    
+
     uid = message.from_user.id
-    
+    conn = None
     try:
-        conn = sqlite3.connect('qarz_tizimii.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        
-        # Avval Maskanchini aniqlab olamiz (shop_id kerak)
-        cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
+
+        # Maskan ID sini aniqlaymiz
+        # SQLite: ? → PostgreSQL: %s
+        cursor.execute("SELECT id FROM shops WHERE owner_id = %s", (uid,))
         shop_res = cursor.fetchone()
-        
+
         if not shop_res:
-            conn.close()
             return await message.answer("⚠️ Siz Maskan egasi sifatida ro'yxatdan o'tmagansiz!")
-        
+
         shop_id = shop_res[0]
         await state.update_data(shop_id=shop_id)
 
-        # Mijozning qarzi borligini tekshiramiz
+        # Telefon raqami orqali mijozning Telegram ID sini qidirish
         cursor.execute("""
-            SELECT customer_name, amount, due_date FROM debts 
-            WHERE shop_id = ? AND customer_phone = ? AND status = 'unpaid'
+            SELECT customer_id FROM debts
+            WHERE customer_phone = %s AND customer_id IS NOT NULL
+            LIMIT 1
+        """, (phone,))
+        c_res = cursor.fetchone()
+        c_id = c_res[0] if c_res else None
+
+        # Agar bazada bo'lmasa, users jadvalidan qidirish
+        if not c_id:
+            cursor.execute("SELECT telegram_id FROM users WHERE phone = %s", (phone,))
+            user_res = cursor.fetchone()
+            c_id = user_res[0] if user_res else None
+
+        # Mavjud qarzni tekshiramiz
+        cursor.execute("""
+            SELECT customer_name, amount, due_date FROM debts
+            WHERE shop_id = %s AND customer_phone = %s AND status = 'unpaid'
         """, (shop_id, phone))
         existing = cursor.fetchone()
-        conn.close()
 
         if existing:
             name, amount, date = existing
             await state.update_data(customer_name=name)
-            
+
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="➕ Ustiga qo'shish", callback_data="existing_add")],
                 [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="existing_cancel")]
             ])
-            
-            text = (f"⚠️ <b>Ushbu mijozda faol qarz bor!</b>\n\n"
-                    f"👤 Ismi: <b>{name}</b>\n"
-                    f"💰 Qarzi: <b>{amount:,} so'm</b>\n\n"
-                    f"Yangi summani qo'shmoqchimisiz?")
-            
+
+            text = (
+                f"⚠️ <b>Ushbu mijozda faol qarz bor!</b>\n\n"
+                f"👤 Ismi: <b>{name}</b>\n"
+                f"💰 Qarzi: <b>{amount:,} so'm</b>\n\n"
+                f"Yangi summani qo'shmoqchimisiz?"
+            )
             await state.set_state(DebtAdd.found_existing)
             await message.answer(text, reply_markup=kb, parse_mode="HTML")
-            
+
         else:
-            # YANGI MIJOZ
-            await state.set_state(DebtAdd.customer_name) 
+            await state.set_state(DebtAdd.customer_name)
             await message.answer(
                 f"✅ Raqam: <code>{phone}</code>\n\n"
-                "🆕 <b>Yangi mijoz!</b>\n👤 Iltimos, mijoz ismini kiriting:", 
+                "🆕 <b>Yangi mijoz!</b>\n👤 Iltimos, mijoz ismini kiriting:",
                 parse_mode="HTML",
                 reply_markup=types.ReplyKeyboardRemove()
             )
 
     except Exception as e:
         await message.answer(f"❌ Xatolik: {e}")
+    finally:
+        if conn:
+            conn.close()
 
-# --- 3. CALLBACKLAR (MAVJUD MIJOZ UCHUN) ---
+
+# --- MAVJUD MIJOZ CALLBACKLARI ---
+
 @shop_router.callback_query(DebtAdd.found_existing, F.data == "existing_add")
 async def process_existing_add(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(DebtAdd.amount)
     await callback.message.edit_text("💰 Qo'shiladigan summa miqdorini kiriting:")
     await callback.answer()
+
 
 @shop_router.callback_query(DebtAdd.found_existing, F.data == "existing_cancel")
 async def process_existing_cancel(callback: types.CallbackQuery, state: FSMContext):
@@ -131,60 +165,62 @@ async def process_existing_cancel(callback: types.CallbackQuery, state: FSMConte
     await callback.message.edit_text("❌ Jarayon bekor qilindi.")
     await callback.answer()
 
-# --- 4. ISMNI QABUL QILISH (YANGI MIJOZ UCHUN) ---
+
+# --- YANGI MIJOZ UCHUN ISM ---
+
 @shop_router.message(DebtAdd.customer_name)
 async def debt_name_set(message: Message, state: FSMContext):
     await state.update_data(customer_name=message.text.strip())
     await state.set_state(DebtAdd.amount)
     await message.answer("💰 Qarz miqdorini kiriting:")
 
-# --- 5. SUMMANI QABUL QILISH ---
+
+# --- SUMMA QABUL QILISH ---
+
 @shop_router.message(DebtAdd.amount)
 async def debt_amount_set(message: Message, state: FSMContext):
     amount_str = message.text.strip().replace(' ', '').replace(',', '')
-    
     if not amount_str.isdigit():
         return await message.answer("❌ Xato! Faqat raqam kiriting.")
-    
     await state.update_data(amount=float(amount_str))
     await state.set_state(DebtAdd.due_date)
-    await message.answer("📅 To'lov muddati:(Format: DD.MM.YYYY, masalan: 25.12.2024)")
+    await message.answer("📅 To'lov muddati: (Format: DD.MM.YYYY, masalan: 25.12.2024)")
 
-# --- 6. SANANI TEKSHIRISH VA TASDIQLASH ---
+
+# --- SANA TEKSHIRISH VA TASDIQLASH ---
+
 @shop_router.message(DebtAdd.due_date)
 async def debt_due_date_confirm(message: Message, state: FSMContext):
     date_str = message.text.strip()
-    
     try:
         formatted_date = date_str.replace('-', '.').replace('/', '.')
         valid_date = datetime.strptime(formatted_date, "%d.%m.%Y")
-        
         if valid_date.date() < datetime.now().date():
             return await message.answer("⚠️ Xato! Sana bugundan oldingi bo'lishi mumkin emas.")
-            
     except ValueError:
         return await message.answer("❌ Sana formati xato!\nNamuna: 31.12.2024")
 
     await state.update_data(due_date=formatted_date)
     data = await state.get_data()
-
     await state.set_state(DebtAdd.confirm)
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Saqlash", callback_data="confirm_debt_yes"),
-            InlineKeyboardButton(text="❌ Bekor qilish", callback_data="confirm_debt_no")
-        ]
-    ])
-    
-    text = (f"📋 <b>Ma'lumotlarni tekshiring:</b>\n\n"
-            f"👤 Mijoz: <b>{data['customer_name']}</b>\n"
-            f"💰 Summa: <b>{data['amount']:,} so'm</b>\n"
-            f"📅 Muddat: <b>{formatted_date}</b>\n\n"
-            f"Saqlaymiz-mi?")
-    
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Saqlash", callback_data="confirm_debt_yes"),
+        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="confirm_debt_no")
+    ]])
+
+    text = (
+        f"📋 <b>Ma'lumotlarni tekshiring:</b>\n\n"
+        f"👤 Mijoz: <b>{data['customer_name']}</b>\n"
+        f"💰 Summa: <b>{data['amount']:,} so'm</b>\n"
+        f"📅 Muddat: <b>{formatted_date}</b>\n\n"
+        f"Saqlaymiz-mi?"
+    )
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
-# --- 5. BAZAGA YOZISH (CALLBACK) ---
+
+
+# --- BAZAGA YOZISH (CALLBACK) ---
+
 @shop_router.callback_query(DebtAdd.confirm, F.data.startswith("confirm_debt_"))
 async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "confirm_debt_no":
@@ -194,67 +230,63 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
 
     data = await state.get_data()
     uid = callback.from_user.id
-    
+    conn = None
+
     try:
-        conn = sqlite3.connect('qarz_tizimii.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        
-        # Maskan ma'lumotlarini olish
-        cursor.execute("SELECT id, name FROM shops WHERE owner_id = ?", (uid,))
+
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (uid,))
         shop_res = cursor.fetchone()
         if not shop_res:
             return await callback.answer("Xato: Maskan topilmadi!")
-        
         shop_id, shop_name = shop_res
 
-        # ⭐ MUHIM: Telefon raqami orqali mijozning Telegram ID sini qidirish
+        # Telefon raqami orqali mijoz ID sini topish
         cursor.execute("""
-            SELECT customer_id FROM debts 
-            WHERE customer_phone = ? AND customer_id IS NOT NULL 
+            SELECT customer_id FROM debts
+            WHERE customer_phone = %s AND customer_id IS NOT NULL
             LIMIT 1
         """, (data['customer_phone'],))
         c_res = cursor.fetchone()
         c_id = c_res[0] if c_res else None
-        
-        # ⭐ YANGI: Agar bazada bo'lmasa, users jadvalidan qidirish
+
         if not c_id:
-            cursor.execute("""
-                SELECT telegram_id FROM users 
-                WHERE phone = ?
-            """, (data['customer_phone'],))
+            cursor.execute("SELECT telegram_id FROM users WHERE phone = %s", (data['customer_phone'],))
             user_res = cursor.fetchone()
             c_id = user_res[0] if user_res else None
 
         # Mavjud qarzni tekshirish
         cursor.execute("""
-            SELECT id, amount FROM debts 
-            WHERE shop_id = ? AND customer_phone = ? AND status = 'unpaid'
+            SELECT id, amount FROM debts
+            WHERE shop_id = %s AND customer_phone = %s AND status = 'unpaid'
         """, (shop_id, data['customer_phone']))
         existing = cursor.fetchone()
 
         if existing:
             total = existing[1] + data['amount']
+            # SQLite: DATE('now') → PostgreSQL: CURRENT_DATE
             cursor.execute("""
-                UPDATE debts 
-                SET amount = ?, due_date = ?, debt_date = DATE('now'), customer_id = ? 
-                WHERE id = ?
+                UPDATE debts
+                SET amount = %s, due_date = %s, debt_date = CURRENT_DATE, customer_id = %s
+                WHERE id = %s
             """, (total, data['due_date'], c_id, existing[0]))
             res_text = f"✅ Qarz yangilandi. Umumiy summa: <b>{total:,} so'm</b>"
         else:
             cursor.execute("""
-                INSERT INTO debts 
-                (shop_id, customer_id, customer_phone, customer_name, amount, due_date, status, debt_date) 
-                VALUES (?,?,?,?,?,?,?, DATE('now'))
-            """, (shop_id, c_id, data['customer_phone'], data['customer_name'], 
-                  data['amount'], data['due_date'], 'unpaid'))
+                INSERT INTO debts
+                (shop_id, customer_id, customer_phone, customer_name, amount, due_date, status, debt_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
+            """, (
+                shop_id, c_id, data['customer_phone'], data['customer_name'],
+                data['amount'], data['due_date'], 'unpaid'
+            ))
             res_text = "✅ Yangi qarz muvaffaqiyatli saqlandi."
 
         conn.commit()
-        conn.close()
-
         await callback.message.edit_text(res_text, parse_mode="HTML")
-        
-        # ⭐⭐⭐ ASOSIY O'ZGARISH: MIJOZGA DARHOL XABAR YUBORISH ⭐⭐⭐
+
+        # Mijozga xabar yuborish
         if c_id:
             try:
                 notification_text = (
@@ -267,27 +299,19 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"⚠️ <i>Iltimos, muddatida to'lang!</i>"
                 )
-                
                 await callback.bot.send_message(
-                    chat_id=c_id, 
-                    text=notification_text,
-                    parse_mode="HTML"
+                    chat_id=c_id, text=notification_text, parse_mode="HTML"
                 )
-                
-                # Do'konchiga xabar yuborilganini bildirish
                 await callback.message.answer(
                     f"📤 <b>{data['customer_name']}</b>ga Telegram orqali xabar yuborildi!",
                     parse_mode="HTML"
                 )
-                
             except Exception as e:
-                print(f"Xabar yuborishda xato: {e}")
+                logging.error(f"Xabar yuborishda xato: {e}")
                 await callback.message.answer(
-                    f"⚠️ Mijozga xabar yetib bormadi. "
-                    f"(Bot bloklangan yoki ID xato bo'lishi mumkin)"
+                    "⚠️ Mijozga xabar yetib bormadi. (Bot bloklangan yoki ID xato)"
                 )
         else:
-            # Mijoz Telegramda ro'yxatdan o'tmagan
             await callback.message.answer(
                 f"ℹ️ <b>{data['customer_name']}</b> hali botdan ro'yxatdan o'tmagan.\n"
                 f"Qarz saqlandi, lekin xabar yuborilmadi.",
@@ -295,46 +319,59 @@ async def debt_confirm_callback(callback: types.CallbackQuery, state: FSMContext
             )
 
     except Exception as db_error:
-        print(f"Baza xatosi: {db_error}")
-        await callback.message.answer(f"❌ Bazaga yozishda xatolik yuz berdi.")
-    
+        logging.error(f"Baza xatosi: {db_error}")
+        await callback.message.answer(f"❌ Bazaga yozishda xatolik yuz berdi: {db_error}")
     finally:
+        if conn:
+            conn.close()
         await state.clear()
         await callback.answer()
-# --- QARZLAR RO'YXATI ---
-@shop_router.message(F.text == "📊 Qarzlar umumiy") # Maskanchi uchun
+
+
+# ============================================================
+# QARZLAR UMUMIY (STATISTIKA)
+# ============================================================
+
+@shop_router.message(F.text == "📊 Qarzlar umumiy")
 async def shop_stats(message: Message):
     uid = message.from_user.id
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT COUNT(*), SUM(amount) FROM debts 
-        WHERE shop_id = (SELECT id FROM shops WHERE owner_id = ?) AND status = 'unpaid'
-    """, (uid,))
-    res = cursor.fetchone()
-    conn.close()
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount) FROM debts
+            WHERE shop_id = (SELECT id FROM shops WHERE owner_id = %s) AND status = 'unpaid'
+        """, (uid,))
+        res = cursor.fetchone()
 
-    count = res[0] if res[0] else 0
-    total = res[1] if res[1] else 0
+        count = res[0] if res[0] else 0
+        total = res[1] if res[1] else 0
 
-    text = (
-        "📈 <b>Sizning Maskaningiz ko'rsatkichlari:</b>\n"
-        "────────────────────\n"
-        f"👥 Qarzdorlar soni: <b>{count} ta</b>\n"
-        f"💰 Jami kutilayotgan summa: <b>{total:,} so'm</b>\n"
-        "────────────────────\n"
-        "<i>Eslatma: To'langan qarzlar avtomatik o'chiriladi.</i>"
-    )
-    await message.answer(text, parse_mode="HTML")
+        text = (
+            "📈 <b>Sizning Maskaningiz ko'rsatkichlari:</b>\n"
+            "────────────────────\n"
+            f"👥 Qarzdorlar soni: <b>{count} ta</b>\n"
+            f"💰 Jami kutilayotgan summa: <b>{total:,} so'm</b>\n"
+            "────────────────────\n"
+            "<i>Eslatma: To'langan qarzlar avtomatik o'chiriladi.</i>"
+        )
+        await message.answer(text, parse_mode="HTML")
+    finally:
+        if conn:
+            conn.close()
 
-# 1. To'lovni qabul qilishni boshlash
+
+# ============================================================
+# TO'LOV QABUL QILISH
+# ============================================================
+
 @shop_router.message(F.text == "💰 To'lovni qabul qilish")
 async def payment_start(message: Message, state: FSMContext):
     await state.set_state(PaymentStates.waiting_for_phone_last4)
     await message.answer("Mijoz telefon raqamining oxirgi 4 ta raqamini kiriting:")
 
-# 2. Raqam bo'yicha qidirish
+
 @shop_router.message(PaymentStates.waiting_for_phone_last4)
 async def payment_find_user(message: Message, state: FSMContext):
     last4 = message.text.strip()
@@ -342,63 +379,60 @@ async def payment_find_user(message: Message, state: FSMContext):
         return await message.answer("Iltimos, faqat 4 ta raqam yuboring!")
 
     uid = message.from_user.id
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Oxirgi 4 raqam bo'yicha topish (LIKE %1234)
-    cursor.execute("""
-        SELECT id, customer_name, customer_phone, amount, debt_date 
-        FROM debts 
-        WHERE shop_id = (SELECT id FROM shops WHERE owner_id = ?) 
-        AND customer_phone LIKE ? AND status = 'unpaid'
-    """, (uid, f'%{last4}'))
-    
-    debts = cursor.fetchall()
-    conn.close()
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    if not debts:
-        await message.answer("Bunday raqamli qarzdor topilmadi.")
-        await state.clear()
-        return
+        # SQLite: LIKE '%1234' → PostgreSQL: LIKE '%1234' (bir xil, lekin ILIKE ham ishlatsa bo'ladi)
+        cursor.execute("""
+            SELECT id, customer_name, customer_phone, amount, debt_date
+            FROM debts
+            WHERE shop_id = (SELECT id FROM shops WHERE owner_id = %s)
+            AND customer_phone LIKE %s AND status = 'unpaid'
+        """, (uid, f'%{last4}'))
 
-    await message.answer(f"🔍 Topilgan qarzlar ({len(debts)} ta):")
-    
-    for d in debts:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
+        debts = cursor.fetchall()
+
+        if not debts:
+            await message.answer("Bunday raqamli qarzdor topilmadi.")
+            await state.clear()
+            return
+
+        await message.answer(f"🔍 Topilgan qarzlar ({len(debts)} ta):")
+        for d in debts:
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="✅ To'liq to'lash", callback_data=f"pay_full_{d[0]}"),
                 InlineKeyboardButton(text="📉 Qisman qirqish", callback_data=f"pay_part_{d[0]}")
-            ]
-        ])
-        
-        await message.answer(
-            f"👤 <b>Mijoz:</b> {d[1]}\n"
-            f"📞 <b>Tel:</b> {d[2]}\n"
-            f"💰 <b>Qarz:</b> {d[3]:,} so'm\n"
-            f"🗓 <b>Sana:</b> {d[4]}",
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
+            ]])
+            await message.answer(
+                f"👤 <b>Mijoz:</b> {d[1]}\n"
+                f"📞 <b>Tel:</b> {d[2]}\n"
+                f"💰 <b>Qarz:</b> {d[3]:,} so'm\n"
+                f"🗓 <b>Sana:</b> {d[4]}",
+                reply_markup=kb, parse_mode="HTML"
+            )
+    finally:
+        if conn:
+            conn.close()
 
-# 3. To'liq to'lov (Callback)
+
 @shop_router.callback_query(F.data.startswith("pay_full_"))
 async def process_full_payment(callback: types.CallbackQuery):
     debt_id = int(callback.data.split("_")[2])
-    
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Statusni o'zgartirish o'rniga - o'chirib tashlaymiz!
-    cursor.execute("DELETE FROM debts WHERE id = ?", (debt_id,))
-    
-    conn.commit()
-    conn.close()
-
-    await callback.message.edit_text("✅ To'lov qabul qilindi va qarz bazadan o'chirildi.")
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM debts WHERE id = %s", (debt_id,))
+        conn.commit()
+        await callback.message.edit_text("✅ To'lov qabul qilindi va qarz bazadan o'chirildi.")
+    finally:
+        if conn:
+            conn.close()
     await callback.answer()
 
 
-# 4. Qisman to'lov (Callback)
 @shop_router.callback_query(F.data.startswith("pay_part_"))
 async def process_partial_payment(callback: types.CallbackQuery, state: FSMContext):
     debt_id = int(callback.data.split("_")[2])
@@ -407,341 +441,306 @@ async def process_partial_payment(callback: types.CallbackQuery, state: FSMConte
     await callback.message.answer("Qancha summa to'lanmoqda? (Masalan: 50000)")
     await callback.answer()
 
-# 5. Qisman summani ayirish
-#  5. Qisman summani ayirish
+
 @shop_router.message(PaymentStates.waiting_for_partial_amount)
 async def save_partial_payment(message: Message, state: FSMContext):
-    # 1. Statni darhol tozalash (Xabar kelishi bilan yopamiz)
     data = await state.get_data()
-    await state.clear() 
+    await state.clear()
 
     raw_amount = message.text.strip().replace(' ', '').replace(',', '')
     if not raw_amount.isdigit():
-        # Agar xato bo'lsa, stateni qayta yoqamiz yoki jarayonni to'xtatamiz
         return await message.answer("❌ Faqat raqam kiriting! To'lov bekor qilindi.")
-    
+
     pay_amount = int(raw_amount)
     debt_id = data.get('active_debt_id')
 
     if not debt_id:
         return await message.answer("⚠️ Xatolik: Qarz ID topilmadi.")
 
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Qarzni tekshirish
-    cursor.execute("SELECT amount, customer_id FROM debts WHERE id = ?", (debt_id,))
-    res = cursor.fetchone()
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    if not res:
-        conn.close()
-        return await message.answer("❌ Qarz topilmadi.")
+        cursor.execute("SELECT amount, customer_id FROM debts WHERE id = %s", (debt_id,))
+        res = cursor.fetchone()
 
-    current_debt, customer_id = res
+        if not res:
+            return await message.answer("❌ Qarz topilmadi.")
 
-    if pay_amount >= current_debt:
-        cursor.execute("DELETE FROM debts WHERE id = ?", (debt_id,))
-        msg = "✅ Qarz to'liq yopildi va o'chirildi."
-    else:
-        new_amount = current_debt - pay_amount
-        cursor.execute("UPDATE debts SET amount = ? WHERE id = ?", (new_amount, debt_id))
-        msg = f"✅ {pay_amount:,} so'm qabul qilindi. Qolgan: {new_amount:,} so'm."
+        current_debt, customer_id = res
 
-    conn.commit()
-    conn.close()
-    
-    # Javob xabari va Maskanchi menyusini qaytarish
-    await message.answer(msg, reply_markup=shop_keyboard())
-    
-    # Mijozga xabar (ixtiyoriy)
-    if customer_id:
-        try:
-            await message.bot.send_message(customer_id, f"💰 To'lov: {pay_amount:,} so'm.\n{msg}")
-        except: pass
+        if pay_amount >= current_debt:
+            cursor.execute("DELETE FROM debts WHERE id = %s", (debt_id,))
+            msg = "✅ Qarz to'liq yopildi va o'chirildi."
+        else:
+            new_amount = current_debt - pay_amount
+            cursor.execute("UPDATE debts SET amount = %s WHERE id = %s", (new_amount, debt_id))
+            msg = f"✅ {pay_amount:,} so'm qabul qilindi. Qolgan: {new_amount:,} so'm."
 
-# 1. Qidiruvni boshlash
+        conn.commit()
+        await message.answer(msg, reply_markup=shop_keyboard())
+
+        if customer_id:
+            try:
+                await message.bot.send_message(customer_id, f"💰 To'lov: {pay_amount:,} so'm.\n{msg}")
+            except:
+                pass
+    finally:
+        if conn:
+            conn.close()
+
+
+# ============================================================
+# QIDIRISH
+# ============================================================
+
 @shop_router.message(F.text == "🔍 Qidirish")
 async def universal_search_start(message: Message, state: FSMContext):
     await state.set_state(ShopSearchStates.waiting_for_query)
     await message.answer("🔍 Qidirish uchun mijozning ismi yoki telefon raqamini kiriting:")
 
-# 2. Qidiruv natijalarini chiqarish
+
 @shop_router.message(ShopSearchStates.waiting_for_query)
 async def process_universal_search(message: Message, state: FSMContext):
     query = message.text.strip()
     uid = message.from_user.id
-    
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Maskan ID sini aniqlaymiz
-    cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
-    shop_res = cursor.fetchone()
-    
-    if not shop_res:
-        conn.close()
-        return await message.answer("Siz Maskan egasi emassiz.")
-    
-    shop_id = shop_res[0]
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    # UNIVERSAL QIDIRUV: Ismi bo'yicha YOKI Telefon raqami bo'yicha
-    cursor.execute("""
-        SELECT customer_name, customer_phone, amount, due_date, status, id
-        FROM debts 
-        WHERE shop_id = ? 
-        AND (customer_name LIKE ? OR customer_phone LIKE ?)
-        ORDER BY status DESC -- Avval to'lanmaganlar chiqadi
-    """, (shop_id, f'%{query}%', f'%{query}%'))
-    
-    results = cursor.fetchall()
-    conn.close()
+        cursor.execute("SELECT id FROM shops WHERE owner_id = %s", (uid,))
+        shop_res = cursor.fetchone()
 
-    if not results:
-        await message.answer(f"😔 '{query}' bo'yicha hech qanday ma'lumot topilmadi.")
-        await state.clear()
-        return
+        if not shop_res:
+            return await message.answer("Siz Maskan egasi emassiz.")
+        shop_id = shop_res[0]
 
-    await message.answer(f"🔎 <b>'{query}'</b> bo'yicha {len(results)} ta natija:")
+        # SQLite: LIKE → PostgreSQL: ILIKE (katta-kichik harfga sezgir emas)
+        cursor.execute("""
+            SELECT customer_name, customer_phone, amount, due_date, status, id
+            FROM debts
+            WHERE shop_id = %s
+            AND (customer_name ILIKE %s OR customer_phone ILIKE %s)
+            ORDER BY status DESC
+        """, (shop_id, f'%{query}%', f'%{query}%'))
 
-    for res in results:
-        status_icon = "🔴 To'lanmagan" if res[4] == 'unpaid' else "🟢 To'langan"
-        
-        # Har bir topilgan natija ostiga To'lov tugmasini ham qo'shib ketamiz (qulaylik uchun)
-        kb = None
-        if res[4] == 'unpaid':
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
+        results = cursor.fetchall()
+
+        if not results:
+            await message.answer(f"😔 '{query}' bo'yicha hech qanday ma'lumot topilmadi.")
+            await state.clear()
+            return
+
+        await message.answer(f"🔎 <b>'{query}'</b> bo'yicha {len(results)} ta natija:", parse_mode="HTML")
+
+        for res in results:
+            status_icon = "🔴 To'lanmagan" if res[4] == 'unpaid' else "🟢 To'langan"
+            kb = None
+            if res[4] == 'unpaid':
+                kb = InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="✅ To'liq yopish", callback_data=f"pay_full_{res[5]}"),
                     InlineKeyboardButton(text="📉 Qisman", callback_data=f"pay_part_{res[5]}")
-                ]
-            ])
+                ]])
 
-        text = (f"👤 <b>Mijoz:</b> {res[0]}\n"
+            text = (
+                f"👤 <b>Mijoz:</b> {res[0]}\n"
                 f"📞 <b>Tel:</b> {res[1]}\n"
                 f"💰 <b>Summa:</b> {res[2]:,} so'm\n"
                 f"📅 <b>Muddat:</b> {res[3]}\n"
-                f"📊 <b>Holat:</b> {status_icon}")
-        
-        await message.answer(text, reply_markup=kb, parse_mode="HTML")
+                f"📊 <b>Holat:</b> {status_icon}"
+            )
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
-    await state.clear()
+    finally:
+        if conn:
+            conn.close()
+        await state.clear()
 
 
-# 1. E'lon yuborishni boshlash
+# ============================================================
+# E'LON YUBORISH
+# ============================================================
+
 @shop_router.message(F.text == "📢 E'lon yuborish")
 async def shop_broadcast_start(message: Message, state: FSMContext):
     await state.set_state(ShopBroadcast.waiting_for_message)
-    await message.answer("📣Faqat sizning qarzdorlaringizga yuboriladigan xabar matnini kiriting:")
+    await message.answer("📣 Faqat sizning qarzdorlaringizga yuboriladigan xabar matnini kiriting:")
 
-# 2. Xabarni tarqatish
+
 @shop_router.message(ShopBroadcast.waiting_for_message)
 async def process_shop_broadcast(message: Message, state: FSMContext):
     broadcast_text = message.text
-    uid = message.from_user.id # Maskanchi IDsi
-    
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Maskan ma'lumotlarini va uning qarzdorlarini olamiz
-    # Faqat botga a'zo bo'lgan (customer_id bor) va qarzi uzilmaganlarni olamiz
-    cursor.execute("""
-        SELECT DISTINCT d.customer_id, s.name 
-        FROM debts d 
-        JOIN shops s ON d.shop_id = s.id 
-        WHERE s.owner_id = ? AND d.customer_id IS NOT NULL AND d.status = 'unpaid'
-    """, (uid,))
-    
-    customers = cursor.fetchall()
-    conn.close()
+    uid = message.from_user.id
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    if not customers:
-        await message.answer("Sizda hali botdan ro'yxatdan o'tgan qarzdorlar yo'q.")
+        cursor.execute("""
+            SELECT DISTINCT d.customer_id, s.name
+            FROM debts d
+            JOIN shops s ON d.shop_id = s.id
+            WHERE s.owner_id = %s AND d.customer_id IS NOT NULL AND d.status = 'unpaid'
+        """, (uid,))
+        customers = cursor.fetchall()
+
+        if not customers:
+            await message.answer("Sizda hali botdan ro'yxatdan o'tgan qarzdorlar yo'q.")
+            await state.clear()
+            return
+
+        shop_name = customers[0][1]
+        sent_count = 0
+        await message.answer("🚀 Xabar yuborish boshlandi...")
+
+        for customer in customers:
+            try:
+                target_id = customer[0]
+                text = (f"📩 <b>{shop_name} Maskanidan xabar:</b>\n\n{broadcast_text}")
+                await message.bot.send_message(target_id, text, parse_mode="HTML")
+                sent_count += 1
+                await asyncio.sleep(0.05)
+            except:
+                continue
+
+        await message.answer(f"✅ Xabar {sent_count} ta qarzdoringizga muvaffaqiyatli yuborildi.")
+    finally:
+        if conn:
+            conn.close()
         await state.clear()
-        return
-
-    shop_name = customers[0][1]
-    sent_count = 0
-    
-    await message.answer(f"🚀 Xabar yuborish boshlandi...")
-
-    for customer in customers:
-        try:
-            target_id = customer[0]
-            text = (f"📩 <b>{shop_name} Maskanidan xabar:</b>\n\n"
-                    f"{broadcast_text}")
-            
-            await message.bot.send_message(target_id, text, parse_mode="HTML")
-            sent_count += 1
-            await asyncio.sleep(0.05) # Telegram limitidan oshmaslik uchun
-        except Exception:
-            continue
-
-    await message.answer(f"✅ Xabar {sent_count} ta qarzdoringizga muvaffaqiyatli yuborildi.")
-    await state.clear()
 
 
-import sqlite3
-import io
-from openpyxl import Workbook
-from aiogram import types, F
-from aiogram.types import BufferedInputFile
+# ============================================================
+# EXCEL HISOBOT
+# ============================================================
 
 @shop_router.message(F.text == "📈 Excel hisobot")
 async def export_excel(message: types.Message):
     uid = message.from_user.id
-    
-    # 1. Ma'lumotlarni bazadan olish
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Maskan ID sini olish
-    cursor.execute("SELECT id, name FROM shops WHERE owner_id = ?", (uid,))
-    shop = cursor.fetchone()
-    
-    if not shop:
-        conn.close()
-        return await message.answer("Siz Maskan egasi emassiz!")
-    
-    shop_id, shop_name = shop
-    
-    # Qarzlar ro'yxatini olish
-    cursor.execute("""
-        SELECT customer_name, customer_phone, amount, due_date, status, debt_date 
-        FROM debts WHERE shop_id = ?
-    """, (shop_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    # --- TEKSHIRUV QISMI ---
-    if not rows:
-        return await message.answer(
-            f"❌ <b>{shop_name}</b> Maskanida hali qarz olgan mijozlar mavjud emas."
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (uid,))
+        shop = cursor.fetchone()
+
+        if not shop:
+            return await message.answer("Siz Maskan egasi emassiz!")
+
+        shop_id, shop_name = shop
+
+        cursor.execute("""
+            SELECT customer_name, customer_phone, amount, due_date, status, debt_date
+            FROM debts WHERE shop_id = %s
+        """, (shop_id,))
+        rows = cursor.fetchall()
+
+        if not rows:
+            return await message.answer(
+                f"❌ <b>{shop_name}</b> Maskanida hali qarz olgan mijozlar mavjud emas.",
+                parse_mode="HTML"
+            )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Qarzlar Hisoboti"
+        ws.append(["Mijoz Ismi", "Telefon", "Summa", "Muddat", "Holat", "Yozilgan sana"])
+
+        for row in rows:
+            ws.append(list(row))
+
+        excel_file = io.BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+
+        document = BufferedInputFile(excel_file.getvalue(), filename=f"{shop_name}_qarzlar.xlsx")
+        await message.answer_document(
+            document=document,
+            caption=f"📊 <b>{shop_name}</b> Maskani uchun to'liq hisobot.",
+            parse_mode="HTML"
         )
-    # -----------------------
+    finally:
+        if conn:
+            conn.close()
 
-    # 2. Excel faylini yaratish (openpyxl orqali)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Qarzlar Hisoboti"
-    
-    # Sarlavhalarni chiroyli qilish (Ixtiyoriy: Stil qo'shish mumkin)
-    headers = ["Mijoz Ismi", "Telefon", "Summa", "Muddat", "Holat", "Yozilgan sana"]
-    ws.append(headers)
-    
-    # Ma'lumotlarni qo'shish
-    for row in rows:
-        ws.append(row)
-    
-    # 3. Faylni xotirada (Buffer) saqlash
-    excel_file = io.BytesIO()
-    wb.save(excel_file)
-    excel_file.seek(0)
-    
-    # 4. Foydalanuvchiga yuborish
-    document = BufferedInputFile(
-        excel_file.getvalue(), 
-        filename=f"{shop_name}_qarzlar.xlsx"
-    )
-    
-    await message.answer_document(
-        document=document, 
-        caption=f"📊 <b>{shop_name}</b> Maskani uchun to'liq hisobot."
-    )
-@shop_router.message(F.text == "📖 Botdan foydalanish")
-async def shop_help_guide(message: Message):
-    guide_text = (
-        "📖 <b>BOTDAN FOYDALANISH BO'YICHA TO'LIQ QO'LLANMA</b>\n\n"
-        "Botingiz orqali savdo va qarz hisob-kitoblarini avtomatlashtirish uchun quyidagi imkoniyatlardan foydalaning:\n\n"
-        
-        "➕ <b>1. Qarz yozish</b>\n"
-        "Yangi qarz kiritish uchun ushbu tugmani bosing. Mijozning telefon raqamini kiritganingizda, bot avtomatik tarzda bazani tekshiradi. Agar mijoz mavjud bo'lsa, yangi qarz eskisiga qo'shiladi, bo'lmasa yangi profil yaratiladi.\n\n"
-        
-        "💰 <b>2. To'lovni qabul qilish</b>\n"
-        "Mijoz qarzining bir qismini yoki hammasini to'laganda foydalaniladi. To'lov kiritilgach, umumiy qarz miqdori avtomatik kamayadi va tarixda saqlanadi.\n\n"
-        
-        "🔍 <b>3. Qidirish tizimi</b>\n"
-        "Ism yoki telefon raqami orqali mijozni soniyalar ichida toping. Mijozning barcha operatsiyalari va joriy qarzi bitta oynada ko'rinadi.\n\n"
-        
-        "📊 <b>4. Ro'yxat va Hisobotlar</b>\n"
-        "• <b>Qarzlar ro'yxati:</b> Barcha faol qarzdorlar va umumiy summa.\n"
-        "• <b>Excel hisobot:</b> Barcha ma'lumotlarni (ism, raqam, summa, sana) Excel formatida yuklab olish.\n\n"
-        
-        "📢 <b>5. E'lon yuborish</b>\n"
-        "Barcha qarzdorlarga bir vaqtda xabar yuborish imkoniyati. Bu reklama yoki umumiy ogohlantirish uchun juda qulay.\n\n"
-        
-        "🔔 <b>6. Avtomatik eslatmalar</b>\n"
-        "Sizdan qo'shimcha harakat talab etilmaydi! Bot har kuni <b>4 marta</b> belgilangan vaqtlarda (09:00, 13:00, 17:00, 21:00) qarzdorlarga ularning qarzi haqida muloyim eslatma yuboradi.\n\n"
-        
-        "🛡 <i>Ma'lumotlaringiz xavfsizligi va maxfiyligi to'liq kafolatlangan!</i>"
-    )
-    
-    await message.answer(guide_text, parse_mode="HTML")
 
-from datetime import datetime
-import sqlite3
-from aiogram import types, F
+# ============================================================
+# MUDDATI O'TGANLAR
+# ============================================================
 
 @shop_router.message(F.text == "🚨 Muddati o'tganlar")
 async def show_overdue_debts(message: types.Message):
     uid = message.from_user.id
-    
-    # 1. Bugungi sanani olish (DD.MM.YYYY formatida bo'lsa)
-    today_str = datetime.now().strftime("%d.%m.%Y")
-    # SQL-da solishtirish oson bo'lishi uchun YYYY-MM-DD formatiga o'tkazish kerak bo'lishi mumkin
-    # Lekin bizning bazada sanalar qanday saqlanganiga qarab ish tutamiz.
-    
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    
-    # Maskan ID-sini aniqlash
-    cursor.execute("SELECT id FROM shops WHERE owner_id = ?", (uid,))
-    shop_res = cursor.fetchone()
-    
-    if not shop_res:
-        conn.close()
-        return await message.answer("⚠️ Siz Maskan egasi emassiz!")
-    
-    shop_id = shop_res[0]
-
-    # 2. To'lanmagan qarzlarni olish
-    cursor.execute("""
-        SELECT customer_name, customer_phone, amount, due_date 
-        FROM debts 
-        WHERE shop_id = ? AND status = 'unpaid'
-    """, (shop_id,))
-    all_unpaid = cursor.fetchall()
-    conn.close()
-
-    overdue_list = []
+    conn = None
     today_date = datetime.now().date()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    # 3. Sanani tekshirish (Format: DD.MM.YYYY)
-    for name, phone, amount, d_date in all_unpaid:
-        try:
-            # Bazadagi satr ko'rinishidagi sanani obyektga o'tkazamiz
-            db_date = datetime.strptime(d_date, "%d.%m.%Y").date()
-            
-            # Agar muddat bugundan kichik bo'lsa - demak muddati o'tgan
-            if db_date < today_date:
-                overdue_list.append((name, phone, amount, d_date))
-        except ValueError:
-            continue # Sana formati xato bo'lsa o'tkazib yuboramiz
+        cursor.execute("SELECT id FROM shops WHERE owner_id = %s", (uid,))
+        shop_res = cursor.fetchone()
 
-    # 4. Natijani chiqarish
-    if not overdue_list:
-        return await message.answer("✅ <b>Hozircha muddati o'tgan qarzdorlar yo'q.</b>", parse_mode="HTML")
+        if not shop_res:
+            return await message.answer("⚠️ Siz Maskan egasi emassiz!")
+        shop_id = shop_res[0]
 
-    text = "🚨 <b>MUDDATI O'TGAN QARZLAR:</b>\n"
-    text += "────────────────────\n"
-    
-    total_overdue = 0
-    for name, phone, amount, date in overdue_list:
-        text += f"👤 <b>{name}</b>\n"
-        text += f"📞 {phone}\n"
-        text += f"💰 <b>{amount:,} so'm</b> (Muddat: {date})\n"
-        text += "────────────────────\n"
-        total_overdue += amount
+        cursor.execute("""
+            SELECT customer_name, customer_phone, amount, due_date
+            FROM debts
+            WHERE shop_id = %s AND status = 'unpaid'
+        """, (shop_id,))
+        all_unpaid = cursor.fetchall()
 
-    text += f"\n🏦 <b>JAMI KECHIKKAN:</b> <u>{total_overdue:,} so'm</u>"
-    
-    await message.answer(text, parse_mode="HTML")
+        overdue_list = []
+        for name, phone, amount, d_date in all_unpaid:
+            try:
+                db_date = datetime.strptime(d_date, "%d.%m.%Y").date()
+                if db_date < today_date:
+                    overdue_list.append((name, phone, amount, d_date))
+            except ValueError:
+                continue
+
+        if not overdue_list:
+            return await message.answer(
+                "✅ <b>Hozircha muddati o'tgan qarzdorlar yo'q.</b>",
+                parse_mode="HTML"
+            )
+
+        text = "🚨 <b>MUDDATI O'TGAN QARZLAR:</b>\n────────────────────\n"
+        total_overdue = 0
+        for name, phone, amount, date in overdue_list:
+            text += f"👤 <b>{name}</b>\n📞 {phone}\n💰 <b>{amount:,} so'm</b> (Muddat: {date})\n────────────────────\n"
+            total_overdue += amount
+
+        text += f"\n🏦 <b>JAMI KECHIKKAN:</b> <u>{total_overdue:,} so'm</u>"
+        await message.answer(text, parse_mode="HTML")
+    finally:
+        if conn:
+            conn.close()
+
+
+# ============================================================
+# BOTDAN FOYDALANISH QO'LLANMASI
+# ============================================================
+
+@shop_router.message(F.text == "📖 Botdan foydalanish")
+async def shop_help_guide(message: Message):
+    guide_text = (
+        "📖 <b>BOTDAN FOYDALANISH BO'YICHA TO'LIQ QO'LLANMA</b>\n\n"
+        "➕ <b>1. Qarz yozish</b>\nYangi qarz kiritish uchun ushbu tugmani bosing. "
+        "Mijozning telefon raqamini kiritganingizda, bot avtomatik tarzda bazani tekshiradi.\n\n"
+        "💰 <b>2. To'lovni qabul qilish</b>\nMijoz qarzining bir qismini yoki hammasini "
+        "to'laganda foydalaniladi.\n\n"
+        "🔍 <b>3. Qidirish tizimi</b>\nIsm yoki telefon raqami orqali mijozni toping.\n\n"
+        "📊 <b>4. Ro'yxat va Hisobotlar</b>\n"
+        "• <b>Qarzlar ro'yxati:</b> Barcha faol qarzdorlar.\n"
+        "• <b>Excel hisobot:</b> Ma'lumotlarni Excel formatida yuklab olish.\n\n"
+        "📢 <b>5. E'lon yuborish</b>\nBarcha qarzdorlarga bir vaqtda xabar yuborish.\n\n"
+        "🔔 <b>6. Avtomatik eslatmalar</b>\nBot har kuni <b>4 marta</b> (09:00, 13:00, "
+        "17:00, 21:00) qarzdorlarga eslatma yuboradi.\n\n"
+        "🛡 <i>Ma'lumotlaringiz xavfsizligi va maxfiyligi to'liq kafolatlangan!</i>"
+    )
+    await message.answer(guide_text, parse_mode="HTML")

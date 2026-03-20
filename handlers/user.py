@@ -1,272 +1,321 @@
-import sqlite3
+import os
+import hashlib
 from aiogram import Router, F, types
 from aiogram.filters import CommandStart
 from aiogram.types import (
-    Message, ReplyKeyboardMarkup, KeyboardButton, 
-    InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+    Message, InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-
-# Tugmalarni import qilish (faylingiz nomiga qarab o'zgartiring)
-try:
-    from buttons import admin_keyboard, shop_keyboard
-except ImportError:
-    # Test uchun vaqtincha funksiyalar (sizda buttons.py bo'lsa buni o'chiring)
-    def shop_keyboard(): return ReplyKeyboardRemove()
+from handlers.connections import get_connection
 
 user_router = Router()
-SUPER_ADMIN_ID = 5148276461  # O'zingizning ID-ingiz
+
+SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", "5148276461"))
+SECRET_KEY = os.getenv("SECRET_KEY", "qarz-tizimi-secret-2024")
+SHOP_WEB_URL = os.getenv("SHOP_WEB_URL", "")
+ADMIN_WEB_URL = os.getenv("ADMIN_WEB_URL", "")
+USE_WEBAPP = SHOP_WEB_URL.startswith("https")  # localhost da False, Netlify da True
+
+
+class CheckDebt(StatesGroup):
+    waiting_phone = State()
 
 class ShopApply(StatesGroup):
     name = State()
-    address = State()
     phone = State()
-
-# --- KLAVIATURALAR (Dizaynli) ---
-
-def get_cancel_kb():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="❌ Bekor qilish"))
-    return builder.as_markup(resize_keyboard=True)
-
-def get_phone_keyboard():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True))
-    builder.row(KeyboardButton(text="❌ Bekor qilish"))
-    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-# def user_start_inline():
-    # builder = InlineKeyboardBuilder()
-    # builder.row(InlineKeyboardButton(text="🔍 Qarzlarimni tekshirish", callback_data="check_debts"))
-    # builder.row(InlineKeyboardButton(text="🚀 O'z Maskanimni ochish", callback_data="open_shop"))
-    # return builder.as_markup()
+    address = State()
+    confirm = State()
 
 
-def user_start_inline():
-    builder = InlineKeyboardBuilder()
-    # Moviy va yashil rangli elementlar bilan boyitish
-    builder.row(InlineKeyboardButton(text="🔍 Qarzlarimni tekshirish", callback_data="check_debts"))
-    # Olov yoki yashil rangli emoji orqali e'tiborni tortish
-    builder.row(InlineKeyboardButton(text="🚀 O'z Maskanimni ochish", callback_data="open_shop"))
-    return builder.as_markup()
-# --- START BUYRUQI ---
+def gen_token(telegram_id: int) -> str:
+    return hashlib.sha256(f"{telegram_id}{SECRET_KEY}".encode()).hexdigest()[:16]
+
+def main_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔍 Qarzlarimni tekshirish", callback_data="check_debt")],
+        [InlineKeyboardButton(text="🏪 Do'kon ochish", callback_data="open_shop")],
+    ])
+
+def cancel_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
+        resize_keyboard=True
+    )
+
+def shop_panel_kb(uid: int, shop_name: str):
+    """HTTPS bo'lsa WebApp, bo'lmasa oddiy URL tugma"""
+    token = gen_token(uid)
+    url = f"{SHOP_WEB_URL}?token={token}&id={uid}"
+    if USE_WEBAPP:
+        from aiogram.types import WebAppInfo
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"🏪 {shop_name} — Panelni Ochish", web_app=WebAppInfo(url=url))
+        ]])
+    else:
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"🏪 {shop_name} — Panelni Ochish", url=url if url.startswith("http") else "https://t.me")
+        ]])
+
+def admin_panel_kb(uid: int):
+    token = gen_token(uid)
+    url = f"{ADMIN_WEB_URL}?token={token}&id={uid}"
+    if USE_WEBAPP:
+        from aiogram.types import WebAppInfo
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⚙️ Admin Panelni Ochish", web_app=WebAppInfo(url=url))
+        ]])
+    else:
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⚙️ Admin Panelni Ochish", url=url if url.startswith("http") else "https://t.me")
+        ]])
+
+
 @user_router.message(CommandStart())
-async def start_bot(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     uid = message.from_user.id
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
+    name = message.from_user.full_name
 
-    # 1. MaskanCHI EKANLIGINI TEKSHIRISH
-    cursor.execute("SELECT name FROM shops WHERE owner_id = ?", (uid,))
-    shop = cursor.fetchone()
-
-    if shop:
-        conn.close()
-        return await message.answer(
-            f"🏪 <b>{shop[0]}</b> Maskani paneli\n\n<i>Xizmat ko'rsatishga tayyor!</i>", 
-            reply_markup=shop_keyboard(), 
-            parse_mode="HTML"
-        )
-
-    # 2. MIJOZ QARZLARINI TEKSHIRISH
-    cursor.execute("""
-        SELECT d.amount, d.due_date, s.name 
-        FROM debts d 
-        JOIN shops s ON d.shop_id = s.id 
-        WHERE d.customer_id = ? AND d.status = 'unpaid'
-    """, (uid,))
-    debts = cursor.fetchall()
-    conn.close()
-
-    if debts:
-        text = (
-            f"👋 <b>Assalomu alaykum, {message.from_user.full_name}!</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>SIZNING QARZLARINGIZ:</b>\n\n"
-        )
-        total_sum = 0
-        for amount, due_date, shop_name in debts:
-            text += (
-                f"🏛 <b>Maskan:</b> <code>{shop_name}</code>\n"
-                f"💰 <b>Summa:</b> {amount:,} so'm\n"
-                f"📅 <b>Muddat:</b> {due_date}\n"
-                f"────────────────────\n"
+    # 1. SUPER ADMIN
+    if uid == SUPER_ADMIN_ID:
+        if USE_WEBAPP:
+            kb = admin_panel_kb(uid)
+            text = f"👑 <b>Xush kelibsiz, Boss!</b>\n\nAdmin panelingiz tayyor:"
+        else:
+            kb = main_menu_kb()
+            text = (
+                f"👑 <b>Xush kelibsiz, Boss!</b>\n\n"
+                f"⚠️ <i>Web panel hali sinov rejimida (localhost).\n"
+                f"Railway ga yuklagandan keyin tugma paydo bo'ladi.</i>"
             )
-            total_sum += amount
-        text += f"\n🏦 <b>UMUMIY QARZINGIZ:</b> <u>{total_sum:,} so'm</u>"
-        
-        await message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
-        await message.answer("💡 <b>Boshqa amallar:</b>", reply_markup=user_start_inline(), parse_mode="HTML")
-    
-    else:
-        text = (
-            f"👋 <b>Xush kelibsiz, {message.from_user.full_name}!</b>\n\n"
-            "Siz tizimda hali ro'yxatdan o'tmagansiz.\n"
-            "Nima qilmoqchisiz? 👇"
+        return await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # 2. MASKANCHI
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (uid,))
+        shop = cursor.fetchone()
+
+        if shop:
+            shop_id, shop_name = shop
+            if USE_WEBAPP:
+                kb = shop_panel_kb(uid, shop_name)
+                text = (
+                    f"✅ <b>Xush kelibsiz, {name}!</b>\n\n"
+                    f"🏪 <b>{shop_name}</b> maskaningiz tayyor:"
+                )
+            else:
+                from buttons import shop_keyboard
+                return await message.answer(
+                    f"✅ <b>Xush kelibsiz, {name}!</b>\n\n"
+                    f"🏪 <b>{shop_name}</b> maskaningiz tayyor!",
+                    reply_markup=shop_keyboard(), parse_mode="HTML"
+                )
+            return await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+        # 3. ODDIY FOYDALANUVCHI
+        await message.answer(
+            f"👋 <b>Assalomu alaykum, {name}!</b>\n\nQuyidagilardan birini tanlang:",
+            reply_markup=main_menu_kb(), parse_mode="HTML"
         )
-        await message.answer(text, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
-        await message.answer("👇 <b>Tanlang:</b>", reply_markup=user_start_inline(), parse_mode="HTML")
+    finally:
+        if conn: conn.close()
 
-# --- BEKOR QILISH HANDLERI ---
+
 @user_router.message(F.text == "❌ Bekor qilish")
-async def cancel_process(message: Message, state: FSMContext):
+async def cancel(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("🚫 <b>Jarayon bekor qilindi.</b>", reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
-    await message.answer("Bosh menyu:", reply_markup=user_start_inline())
+    await message.answer("🚫 Bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Bosh menyu:", reply_markup=main_menu_kb())
 
-# --- Maskan OCHISH ARIZASI (FSM) ---
+
+@user_router.callback_query(F.data == "check_debt")
+async def check_debt_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(CheckDebt.waiting_phone)
+    await callback.message.answer(
+        "📞 <b>Telefon raqamingizni kiriting:</b>\nNamuna: <code>+998901234567</code>",
+        reply_markup=cancel_kb(), parse_mode="HTML"
+    )
+    await callback.answer()
+
+@user_router.message(CheckDebt.waiting_phone)
+async def check_debt_result(message: Message, state: FSMContext):
+    await state.clear()
+    phone = message.text.strip()
+    if not phone.startswith('+'): phone = '+' + phone
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT d.amount, d.due_date, s.name
+            FROM debts d JOIN shops s ON s.id = d.shop_id
+            WHERE d.customer_phone = %s AND d.status = 'unpaid'
+            ORDER BY d.debt_date DESC
+        """, (phone,))
+        debts = cursor.fetchall()
+
+        if not debts:
+            await message.answer(
+                "✅ <b>Yaxshi xabar!</b>\n\nBu raqamda faol qarz topilmadi.",
+                reply_markup=ReplyKeyboardRemove(), parse_mode="HTML"
+            )
+        else:
+            total = sum(float(d[0]) for d in debts)
+            text = f"📋 <b>{phone} raqamidagi qarzlar:</b>\n\n"
+            for amount, due_date, shop_name in debts:
+                text += (
+                    f"🏪 <b>{shop_name}</b>\n"
+                    f"💰 {float(amount):,.0f} so'm\n"
+                    f"📅 Muddat: {due_date}\n"
+                    f"────────────────\n"
+                )
+            text += f"\n💵 <b>Jami: {total:,.0f} so'm</b>"
+            await message.answer(text, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
+
+        await message.answer("Bosh menyu:", reply_markup=main_menu_kb())
+    finally:
+        if conn: conn.close()
+
 
 @user_router.callback_query(F.data == "open_shop")
-async def apply_shop_start(callback: types.CallbackQuery, state: FSMContext):
+async def apply_start(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(ShopApply.name)
     await callback.message.answer(
-        "🏪 <b>Maskan ochish uchun ariza berish</b>\n\n1️⃣ Maskaningiz nomini kiriting:", 
-        reply_markup=get_cancel_kb(),
-        parse_mode="HTML"
+        "🏪 <b>Do'kon ochish uchun ariza</b>\n\n1️⃣ Do'koningiz nomini kiriting:",
+        reply_markup=cancel_kb(), parse_mode="HTML"
     )
     await callback.answer()
 
 @user_router.message(ShopApply.name)
 async def apply_name(message: Message, state: FSMContext):
-    await state.update_data(shop_name=message.text)
+    await state.update_data(name=message.text.strip())
+    await state.set_state(ShopApply.phone)
+    await message.answer("2️⃣ Telefon raqamingizni kiriting:")
+
+@user_router.message(ShopApply.phone)
+async def apply_phone(message: Message, state: FSMContext):
+    await state.update_data(phone=message.text.strip())
     await state.set_state(ShopApply.address)
-    await message.answer("2️⃣ Maskan manzilini kiriting (shahar, ko'cha...):", reply_markup=get_cancel_kb())
+    await message.answer("3️⃣ Do'kon joylashuvini kiriting (shahar, ko'cha):")
 
 @user_router.message(ShopApply.address)
 async def apply_address(message: Message, state: FSMContext):
-    await state.update_data(shop_address=message.text)
-    await state.set_state(ShopApply.phone)
+    await state.update_data(address=message.text.strip())
+    data = await state.get_data()
+    await state.set_state(ShopApply.confirm)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="apply_confirm"),
+        InlineKeyboardButton(text="❌ Bekor", callback_data="apply_cancel"),
+    ]])
     await message.answer(
-        "3️⃣ <b>Oxirgi qadam!</b>\nTelefon raqamingizni yuboring:", 
-        reply_markup=get_phone_keyboard(),
-        parse_mode="HTML"
+        f"📝 <b>Ariza ma'lumotlari:</b>\n\n"
+        f"🏪 Do'kon nomi: <b>{data['name']}</b>\n"
+        f"📞 Telefon: <b>{data['phone']}</b>\n"
+        f"📍 Manzil: <b>{data['address']}</b>\n\nTo'g'rimi?",
+        reply_markup=kb, parse_mode="HTML"
     )
 
-@user_router.message(ShopApply.phone, F.contact)
-async def apply_phone(message: Message, state: FSMContext):
+@user_router.callback_query(ShopApply.confirm, F.data == "apply_cancel")
+async def apply_cancel_cb(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Ariza bekor qilindi.")
+    await callback.message.answer("Bosh menyu:", reply_markup=main_menu_kb())
+    await callback.answer()
+
+@user_router.callback_query(ShopApply.confirm, F.data == "apply_confirm")
+async def apply_confirm_cb(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    uid = message.from_user.id
-    phone = message.contact.phone_number
-    if not phone.startswith('+'): phone = '+' + phone
-    
-    # Admin tugmalari
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{uid}"),
-         InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{uid}")]
-    ])
-    
-    admin_text = (
-        f"🚀 <b>YANGI Maskan ARIZASI!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>Foydalanuvchi:</b> {message.from_user.full_name}\n"
-        f"🆔 <b>ID:</b> <code>{uid}</code>\n"
-        f"🏪 <b>Maskan:</b> <b>{data['shop_name']}</b>\n"
-        f"📍 <b>Manzil:</b> {data['shop_address']}\n"
-        f"📞 <b>Tel:</b> {phone}\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-    
-    await message.bot.send_message(chat_id=SUPER_ADMIN_ID, text=admin_text, reply_markup=kb, parse_mode="HTML")
-    await message.answer(
-        "✅ <b>Arizangiz adminga yuborildi!</b>\n\nTez orada ko'rib chiqib javob beramiz.", 
-        reply_markup=ReplyKeyboardRemove(),
-        parse_mode="HTML"
-    )
+    uid = callback.from_user.id
+    uname = callback.from_user.full_name
     await state.clear()
 
-# --- ADMIN TASDIQLASHI ---
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{uid}"),
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{uid}"),
+    ]])
+    await callback.bot.send_message(
+        chat_id=SUPER_ADMIN_ID,
+        text=(
+            f"🏪 <b>YANGI DO'KON ARIZASI!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Foydalanuvchi:</b> {uname}\n"
+            f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+            f"🏪 <b>Do'kon:</b> {data['name']}\n"
+            f"📞 <b>Tel:</b> {data['phone']}\n"
+            f"📍 <b>Manzil:</b> {data['address']}\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        ),
+        reply_markup=kb, parse_mode="HTML"
+    )
+    await callback.message.edit_text(
+        "✅ <b>Arizangiz yuborildi!</b>\n\nAdmin tez orada ko'rib chiqadi. 🙏",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
 
 @user_router.callback_query(F.data.startswith("approve_"))
 async def approve_shop(callback: types.CallbackQuery):
-    user_id = int(callback.data.split("_")[1])
+    uid = int(callback.data.split("_")[1])
     lines = callback.message.text.split('\n')
-    
     shop_data = {}
     for line in lines:
-        if "Maskan:" in line: shop_data['name'] = line.split(": ")[1]
-        if "Manzil:" in line: shop_data['address'] = line.split(": ")[1]
-        if "Tel:" in line: shop_data['phone'] = line.split(": ")[1]
+        if "Do'kon:" in line: shop_data['name'] = line.split(": ", 1)[1].strip()
+        if "Tel:" in line: shop_data['phone'] = line.split(": ", 1)[1].strip()
+        if "Manzil:" in line: shop_data['address'] = line.split(": ", 1)[1].strip()
 
+    conn = None
     try:
-        conn = sqlite3.connect('qarz_tizimii.db')
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO shops (name, owner_id, phone, address) VALUES (?, ?, ?, ?)",
-            (shop_data.get('name'), user_id, shop_data.get('phone'), shop_data.get('address'))
+            "INSERT INTO shops (name, owner_id, phone, address) VALUES (%s, %s, %s, %s)",
+            (shop_data.get('name'), uid, shop_data.get('phone'), shop_data.get('address'))
         )
         conn.commit()
-        conn.close()
-        
+
+        # Web panel tayyor bo'lsa WebApp, bo'lmasa oddiy xabar
+        if USE_WEBAPP:
+            kb = shop_panel_kb(uid, shop_data.get('name', 'Maskan'))
+        else:
+            kb = None
+
         await callback.bot.send_message(
-            user_id, 
-            "🎉 <b>Xushxabar!</b>\n\nSizning Maskaningiz tasdiqlandi. /start bosing va panelga kiring!", 
-            parse_mode="HTML"
+            chat_id=uid,
+            text=(
+                f"🎉 <b>Tabriklaymiz!</b>\n\n"
+                f"✅ <b>{shop_data.get('name')}</b> do'koningiz tasdiqlandi!\n\n"
+                f"Botda ishlash uchun /start bosing 👇"
+            ),
+            reply_markup=kb, parse_mode="HTML"
         )
-        await callback.message.edit_text(callback.message.text + "\n\n✅ <b>TASDIQLANDI</b>")
+        await callback.message.edit_text(
+            callback.message.text + "\n\n✅ <b>TASDIQLANDI</b>", parse_mode="HTML"
+        )
     except Exception as e:
         await callback.answer(f"Xato: {e}", show_alert=True)
+    finally:
+        if conn: conn.close()
+    await callback.answer()
+
 
 @user_router.callback_query(F.data.startswith("reject_"))
 async def reject_shop(callback: types.CallbackQuery):
-    user_id = int(callback.data.split("_")[1])
-    await callback.bot.send_message(user_id, "❌ Uzr, sizning Maskan ochish haqidagi arizangiz rad etildi.")
-    await callback.message.edit_text(callback.message.text + "\n\n❌ <b>RAD ETILDI</b>")
-    await callback.answer()
-
-# --- QARZNI TEKSHIRISH ---
-
-@user_router.callback_query(F.data == "check_debts")
-async def check_debts_callback(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "📊 <b>Qarzlarni ko'rish uchun</b> pastdagi tugma orqali telefon raqamingizni yuboring:",
-        reply_markup=get_phone_keyboard(),
+    uid = int(callback.data.split("_")[1])
+    await callback.bot.send_message(
+        chat_id=uid,
+        text="😔 <b>Afsuski...</b>\n\nDo'kon ochish arizangiz rad etildi.",
         parse_mode="HTML"
     )
+    await callback.message.edit_text(
+        callback.message.text + "\n\n❌ <b>RAD ETILDI</b>", parse_mode="HTML"
+    )
     await callback.answer()
-
-@user_router.message(F.contact)
-async def handle_contact(message: Message):
-    phone = message.contact.phone_number
-    if not phone.startswith('+'): phone = '+' + phone
-    uid = message.from_user.id
-    
-    conn = sqlite3.connect('qarz_tizimii.db')
-    cursor = conn.cursor()
-    cursor.execute("UPDATE shops SET owner_id = ? WHERE phone = ? AND owner_id IS NULL", (uid, phone))
-    cursor.execute("UPDATE debts SET customer_id = ? WHERE customer_phone = ?", (uid, phone))
-    conn.commit()
-
-    cursor.execute("SELECT name FROM shops WHERE owner_id = ?", (uid,))
-    shop = cursor.fetchone()
-
-    if shop:
-        conn.close()
-        return await message.answer(
-            f"✅ <b>{shop[0]}</b> Maskani paneli faollashdi!", 
-            reply_markup=shop_keyboard(), 
-            parse_mode="HTML"
-        )
-
-    cursor.execute("""
-        SELECT d.amount, d.due_date, s.name 
-        FROM debts d 
-        JOIN shops s ON d.shop_id = s.id 
-        WHERE d.customer_id = ? AND d.status = 'unpaid'
-    """, (uid,))
-    debts = cursor.fetchall()
-    conn.close()
-
-    if debts:
-        text = "📋 <b>Sizning faol qarzlaringiz:</b>\n\n"
-        total = 0
-        for amount, date, sname in debts:
-            text += f"🏪 <b>Maskan:</b> {sname}\n💰 <b>Summa:</b> {amount:,} so'm\n📅 <b>Muddat:</b> {date}\n"
-            text += "────────────────────\n"
-            total += amount
-        text += f"\n💵 <b>JAMI QARZ:</b> <u>{total:,} so'm</u>"
-        await message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
-    else:
-        await message.answer("✅ Faol qarzlar topilmadi.", reply_markup=ReplyKeyboardRemove())
