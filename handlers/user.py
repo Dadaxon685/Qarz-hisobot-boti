@@ -183,8 +183,8 @@ async def handle_contact(message: Message, state: FSMContext):
             kb = panel_kb(uid, shop[1])
             if kb:
                 await message.answer(f"🏪 <b>{shop[1]}</b> panelingiz:", reply_markup=kb, parse_mode="HTML")
-        elif not debts:
-            await message.answer("Do'kon ochmoqchimisiz?", reply_markup=main_menu_kb())
+        else:
+            await message.answer("🏪 Do'kon ochmoqchimisiz?", reply_markup=main_menu_kb())
 
     finally:
         if conn: conn.close()
