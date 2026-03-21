@@ -301,7 +301,10 @@ def shop_stats(user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        shop_id = user["shop_id"]
+        cursor.execute("SELECT id FROM shops WHERE owner_id=%s", (user["owner_id"],))
+        r = cursor.fetchone()
+        if not r: raise HTTPException(status_code=404, detail="Dokon topilmadi")
+        shop_id = r[0]
         today = datetime.now().strftime("%d.%m.%Y")
 
         cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM debts WHERE shop_id=%s AND status='unpaid'", (shop_id,))
@@ -328,12 +331,14 @@ def shop_stats(user=Depends(require_shop)):
 
 @app.get("/shop/overdue")
 def shop_overdue_debts(user=Depends(require_shop)):
-    """Muddati o'tgan qarzlar — bugungi sanadan oldingi"""
     from datetime import datetime
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        shop_id = user["shop_id"]
+        cursor.execute("SELECT id FROM shops WHERE owner_id=%s", (user["owner_id"],))
+        r = cursor.fetchone()
+        if not r: return []
+        shop_id = r[0]
         today_date = datetime.now().date()
 
         cursor.execute("""
@@ -372,7 +377,11 @@ def shop_get_debts(user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id,customer_name,customer_phone,amount,due_date,status,debt_date FROM debts WHERE shop_id=%s ORDER BY debt_date DESC", (user["shop_id"],))
+        cursor.execute("SELECT id FROM shops WHERE owner_id=%s", (user["owner_id"],))
+        r = cursor.fetchone()
+        shop_id = r[0] if r else None
+        if not shop_id: return []
+        cursor.execute("SELECT id,customer_name,customer_phone,amount,due_date,status,debt_date FROM debts WHERE shop_id=%s ORDER BY debt_date DESC", (shop_id,))
         cols = ["id","customer_name","customer_phone","amount","due_date","status","debt_date"]
         return [dict(zip(cols, r)) for r in cursor.fetchall()]
     finally:
@@ -392,8 +401,13 @@ async def shop_create_debt(data: DebtCreate, user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        shop_id = user["shop_id"]
-        shop_name = user["shop_name"]
+        owner_id = user["owner_id"]
+        # shop_id ni tokendan emas, bazadan olamiz
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id=%s", (owner_id,))
+        shop_row = cursor.fetchone()
+        if not shop_row:
+            raise HTTPException(status_code=404, detail="Dokon topilmadi. Qayta login qiling.")
+        shop_id, shop_name = shop_row
 
         cursor.execute("SELECT customer_id FROM debts WHERE customer_phone=%s AND customer_id IS NOT NULL LIMIT 1", (data.customer_phone,))
         cid_row = cursor.fetchone()
@@ -474,7 +488,10 @@ def shop_delete_debt(debt_id: int, user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM debts WHERE id=%s AND shop_id=%s", (debt_id, user["shop_id"]))
+        cursor.execute("SELECT id FROM shops WHERE owner_id=%s", (user["owner_id"],))
+        r = cursor.fetchone()
+        shop_id = r[0] if r else None
+        cursor.execute("DELETE FROM debts WHERE id=%s AND shop_id=%s", (debt_id, shop_id))
         conn.commit()
         return {"message": "O'chirildi"}
     finally:
