@@ -19,11 +19,20 @@ ADMIN_WEB_URL = os.getenv("ADMIN_WEB_URL", "")
 USE_WEBAPP = SHOP_WEB_URL.startswith("https")
 
 
+class CheckDebt(StatesGroup):
+    waiting_phone = State()
+
 class ShopApply(StatesGroup):
     name = State()
     phone = State()
     address = State()
     confirm = State()
+
+class AddEmployee(StatesGroup):
+    waiting_id = State()
+
+class RemoveEmployee(StatesGroup):
+    waiting_id = State()
 
 
 def gen_token(telegram_id: int) -> str:
@@ -35,21 +44,37 @@ def main_menu_kb():
         [InlineKeyboardButton(text="🏪 Do'kon ochish", callback_data="open_shop")],
     ])
 
-def phone_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Telefon raqamimni yuborish", request_contact=True)]],
-        resize_keyboard=True, one_time_keyboard=True
-    )
-
 def cancel_kb():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
         resize_keyboard=True
     )
 
+def shop_panel_kb(uid: int, shop_name: str):
+    token = gen_token(uid)
+    if USE_WEBAPP:
+        url = f"{SHOP_WEB_URL}?token={token}&id={uid}"
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"🏪 {shop_name} — Panelni Ochish", web_app=WebAppInfo(url=url))
+        ]])
+    return None
+
+def owner_menu_kb():
+    """Do'kon egasi uchun menyu"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="👥 Xodimlar"), KeyboardButton(text="➕ Xodim qo'shish")],
+        [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="🌐 Panelni ochish")],
+    ], resize_keyboard=True)
+
+def staff_menu_kb():
+    """Xodim uchun menyu"""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🌐 Panelni ochish")],
+    ], resize_keyboard=True)
+
 
 # ============================================================
-# /START
+# START
 # ============================================================
 
 @user_router.message(CommandStart())
@@ -58,178 +83,80 @@ async def cmd_start(message: Message, state: FSMContext):
     uid = message.from_user.id
     name = message.from_user.full_name
 
-    # SUPER ADMIN
+    # 1. SUPER ADMIN
     if uid == SUPER_ADMIN_ID:
+        token = gen_token(uid)
         if USE_WEBAPP and ADMIN_WEB_URL.startswith("https"):
-            token = gen_token(uid)
+            url = f"{ADMIN_WEB_URL}?token={token}&id={uid}"
             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="⚙️ Admin Panelni Ochish",
-                    web_app=WebAppInfo(url=f"{ADMIN_WEB_URL}?token={token}&id={uid}")
-                )
+                InlineKeyboardButton(text="⚙️ Admin Panelni Ochish", web_app=WebAppInfo(url=url))
             ]])
             return await message.answer(
                 f"👑 <b>Xush kelibsiz, Boss!</b>",
                 reply_markup=kb, parse_mode="HTML"
             )
-        return await message.answer(
-            f"👑 <b>Xush kelibsiz, Boss!</b>\n\nAdmin panel tayyor.",
-            parse_mode="HTML"
-        )
+        return await message.answer(f"👑 <b>Xush kelibsiz, Boss!</b>", parse_mode="HTML")
 
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        # MASKANCHI
+        # 2. DO'KON EGASI
         cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (uid,))
         shop = cursor.fetchone()
         if shop:
             shop_id, shop_name = shop
+            kb = shop_panel_kb(uid, shop_name)
+            text = (
+                f"✅ <b>Xush kelibsiz, {name}!</b>\n\n"
+                f"🏪 <b>{shop_name}</b> do'koni paneli\n\n"
+                f"👥 Xodimlar qo'shish va boshqarish uchun quyidagi menyudan foydalaning:"
+            )
+            await message.answer(text, reply_markup=owner_menu_kb(), parse_mode="HTML")
+            if kb:
+                await message.answer("🌐 Web panel:", reply_markup=kb)
+            return
+
+        # 3. XODIM
+        cursor.execute("""
+            SELECT e.shop_id, s.name, e.role
+            FROM employees e JOIN shops s ON s.id = e.shop_id
+            WHERE e.telegram_id = %s
+        """, (uid,))
+        emp = cursor.fetchone()
+        if emp:
+            shop_id, shop_name, role = emp
+            # Xodim uchun owner_id o'rniga o'zining ID sini ishlatamiz
+            cursor.execute("SELECT owner_id FROM shops WHERE id = %s", (shop_id,))
+            owner = cursor.fetchone()
+            token = gen_token(owner[0]) if owner else gen_token(uid)
+
             if USE_WEBAPP:
-                token = gen_token(uid)
+                url = f"{SHOP_WEB_URL}?token={token}&id={owner[0]}"
                 kb = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text=f"🏪 {shop_name} — Panelni Ochish",
-                        web_app=WebAppInfo(url=f"{SHOP_WEB_URL}?token={token}&id={uid}")
-                    )
+                    InlineKeyboardButton(text=f"🏪 {shop_name} — Panelni Ochish", web_app=WebAppInfo(url=url))
                 ]])
             else:
-                from buttons import shop_keyboard
-                return await message.answer(
-                    f"✅ <b>Xush kelibsiz, {name}!</b>\n🏪 <b>{shop_name}</b>",
-                    reply_markup=shop_keyboard(), parse_mode="HTML"
-                )
-            return await message.answer(
-                f"✅ <b>Xush kelibsiz, {name}!</b>\n🏪 <b>{shop_name}</b>",
-                reply_markup=kb, parse_mode="HTML"
+                kb = None
+
+            text = (
+                f"👷 <b>Xush kelibsiz, {name}!</b>\n\n"
+                f"🏪 <b>{shop_name}</b> xodimisiz\n"
+                f"📋 Rol: <b>{'Xodim' if role == 'staff' else 'Menejer'}</b>"
             )
+            await message.answer(text, reply_markup=staff_menu_kb(), parse_mode="HTML")
+            if kb:
+                await message.answer("🌐 Web panel:", reply_markup=kb)
+            return
 
-        # ODDIY FOYDALANUVCHI — telefon raqami bazada bormi?
-        cursor.execute("SELECT phone FROM users WHERE telegram_id = %s", (uid,))
-        user_row = cursor.fetchone()
-
-        if user_row and user_row[0]:
-            # Raqam saqlangan — qarzlarni ko'rsat
-            phone = user_row[0]
-            await show_debts_by_phone(message, phone, conn)
-        else:
-            # Raqam yo'q — taklif qil
-            await message.answer(
-                f"👋 <b>Assalomu alaykum, {name}!</b>\n\n"
-                f"Qarzlaringizni tekshirish uchun telefon raqamingizni yuboring.\n"
-                f"Bu <b>bir marta</b> amalga oshiriladi — keyingi safar avtomatik ko'rsatiladi 📱",
-                reply_markup=phone_kb(),
-                parse_mode="HTML"
-            )
-
+        # 4. ODDIY FOYDALANUVCHI
+        await message.answer(
+            f"👋 <b>Assalomu alaykum, {name}!</b>\n\nQuyidagilardan birini tanlang:",
+            reply_markup=main_menu_kb(), parse_mode="HTML"
+        )
     finally:
         if conn: conn.close()
-
-
-# ============================================================
-# TELEFON RAQAMNI QABUL QILISH VA SAQLASH
-# ============================================================
-
-@user_router.message(F.contact)
-async def handle_contact(message: Message):
-    uid = message.from_user.id
-    phone = message.contact.phone_number
-    if not phone.startswith('+'): phone = '+' + phone
-
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # users jadvalida saqlash/yangilash
-        cursor.execute("SELECT id FROM users WHERE telegram_id = %s", (uid,))
-        existing = cursor.fetchone()
-
-        if existing:
-            cursor.execute(
-                "UPDATE users SET phone = %s WHERE telegram_id = %s",
-                (phone, uid)
-            )
-        else:
-            cursor.execute(
-                "INSERT INTO users (telegram_id, phone, full_name) VALUES (%s, %s, %s)",
-                (uid, phone, message.from_user.full_name)
-            )
-
-        # Agar debts jadvalida shu telefon bilan yozuvlar bo'lsa — customer_id ni bog'lash
-        cursor.execute(
-            "UPDATE debts SET customer_id = %s WHERE customer_phone = %s AND customer_id IS NULL",
-            (uid, phone)
-        )
-        conn.commit()
-
-        await message.answer(
-            f"✅ <b>Raqamingiz saqlandi!</b>\n\n"
-            f"Endi shu raqamga qarz yozilsa, sizga avtomatik xabar keladi 📩",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode="HTML"
-        )
-
-        # Qarzlarni ko'rsatish
-        await show_debts_by_phone(message, phone, conn)
-
-    finally:
-        if conn: conn.close()
-
-
-async def show_debts_by_phone(message: Message, phone: str, conn):
-    """Telefon raqam bo'yicha qarzlarni ko'rsatish"""
-    from datetime import datetime
-    today = datetime.now().date()
-
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT d.amount, d.due_date, d.status, s.name
-        FROM debts d JOIN shops s ON s.id = d.shop_id
-        WHERE d.customer_phone = %s AND d.status = 'unpaid'
-        ORDER BY d.debt_date DESC
-    """, (phone,))
-    debts = cursor.fetchall()
-
-    if not debts:
-        await message.answer(
-            "✅ <b>Yaxshi xabar!</b>\n\nHozircha faol qarzingiz yo'q! 🎉",
-            reply_markup=ReplyKeyboardRemove(),
-            parse_mode="HTML"
-        )
-        await message.answer("Boshqa amallar:", reply_markup=main_menu_kb())
-        return
-
-    total = sum(float(d[0]) for d in debts)
-    overdue = 0
-    text = f"📋 <b>Sizning qarzlaringiz:</b>\n━━━━━━━━━━━━━━━━━━\n\n"
-
-    for amount, due_date, status, shop_name in debts:
-        is_late = False
-        try:
-            p = due_date.split('.')
-            if len(p) == 3:
-                dd = datetime(int(p[2]), int(p[1]), int(p[0])).date()
-                is_late = dd < today
-                if is_late: overdue += 1
-        except: pass
-
-        late_tag = "\n   🔴 <b>Muddati o'tgan!</b>" if is_late else ""
-        text += (
-            f"🏪 <b>{shop_name}</b>\n"
-            f"💰 {float(amount):,.0f} so'm\n"
-            f"📅 Muddat: {due_date}{late_tag}\n\n"
-        )
-
-    text += f"━━━━━━━━━━━━━━━━━━\n💵 <b>Jami: {total:,.0f} so'm</b>"
-
-    if overdue:
-        text += f"\n🚨 <b>{overdue} ta qarzingiz muddati o'tgan!</b>"
-
-    await message.answer(text, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
-    await message.answer("Boshqa amallar:", reply_markup=main_menu_kb())
 
 
 # ============================================================
@@ -244,31 +171,271 @@ async def cancel(message: Message, state: FSMContext):
 
 
 # ============================================================
-# QARZ TEKSHIRISH (inline tugma)
+# DO'KON EGASI — XODIMLAR BOSHQARUVI
 # ============================================================
 
-@user_router.callback_query(F.data == "check_debt")
-async def check_debt_cb(callback: types.CallbackQuery):
-    uid = callback.from_user.id
+@user_router.message(F.text == "👥 Xodimlar")
+async def list_employees(message: Message):
+    uid = message.from_user.id
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT phone FROM users WHERE telegram_id = %s", (uid,))
-        row = cursor.fetchone()
+        cursor.execute("SELECT id FROM shops WHERE owner_id = %s", (uid,))
+        shop = cursor.fetchone()
+        if not shop:
+            return await message.answer("❌ Siz do'kon egasi emassiz.")
 
-        if row and row[0]:
-            await show_debts_by_phone(callback.message, row[0], conn)
-        else:
-            await callback.message.answer(
-                "📱 <b>Telefon raqamingizni yuboring:</b>\n\n"
-                "Bir marta yuborsangiz — keyingi safar avtomatik ko'rsatiladi!",
-                reply_markup=phone_kb(),
+        cursor.execute("""
+            SELECT telegram_id, full_name, role, added_at
+            FROM employees WHERE shop_id = %s ORDER BY added_at
+        """, (shop[0],))
+        employees = cursor.fetchall()
+
+        if not employees:
+            return await message.answer(
+                "👥 <b>Xodimlar yo'q</b>\n\n"
+                "Xodim qo'shish uchun <b>➕ Xodim qo'shish</b> tugmasini bosing.",
                 parse_mode="HTML"
             )
+
+        text = "👥 <b>Sizning xodimlaringiz:</b>\n\n"
+        for i, (tid, fname, role, added) in enumerate(employees, 1):
+            text += f"{i}. {fname or 'Noma\'lum'} — <code>{tid}</code> ({role})\n"
+
+        text += "\n❌ Xodimni o'chirish uchun uning ID sini yuboring yoki bekor yozing."
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="➕ Xodim qo'shish", callback_data="add_employee"),
+            InlineKeyboardButton(text="❌ O'chirish", callback_data="remove_employee"),
+        ]])
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
     finally:
         if conn: conn.close()
+
+
+@user_router.message(F.text == "➕ Xodim qo'shish")
+async def add_employee_start(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM shops WHERE owner_id = %s", (uid,))
+        if not cursor.fetchone():
+            return await message.answer("❌ Siz do'kon egasi emassiz.")
+    finally:
+        if conn: conn.close()
+
+    await state.set_state(AddEmployee.waiting_id)
+    await message.answer(
+        "➕ <b>Xodim qo'shish</b>\n\n"
+        "Xodimning Telegram ID sini yuboring.\n"
+        "ID ni bilish uchun xodim @userinfobot ga /start yuborsın.",
+        reply_markup=cancel_kb(), parse_mode="HTML"
+    )
+
+@user_router.callback_query(F.data == "add_employee")
+async def add_employee_cb(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(AddEmployee.waiting_id)
+    await callback.message.answer(
+        "➕ Xodimning Telegram ID sini yuboring:",
+        reply_markup=cancel_kb()
+    )
     await callback.answer()
+
+@user_router.message(AddEmployee.waiting_id)
+async def add_employee_save(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        return await message.answer("❌ Faqat raqam kiriting!")
+
+    emp_id = int(message.text)
+    uid = message.from_user.id
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id = %s", (uid,))
+        shop = cursor.fetchone()
+        if not shop:
+            return await message.answer("❌ Siz do'kon egasi emassiz.")
+
+        shop_id, shop_name = shop
+
+        # Xodim allaqachon bormi?
+        cursor.execute("SELECT id FROM employees WHERE shop_id=%s AND telegram_id=%s", (shop_id, emp_id))
+        if cursor.fetchone():
+            await state.clear()
+            return await message.answer("⚠️ Bu xodim allaqachon qo'shilgan!")
+
+        # Xodim boshqa do'konda ishlaydimi?
+        cursor.execute("SELECT s.name FROM employees e JOIN shops s ON s.id=e.shop_id WHERE e.telegram_id=%s", (emp_id,))
+        existing = cursor.fetchone()
+        if existing:
+            await state.clear()
+            return await message.answer(f"⚠️ Bu kishi allaqachon <b>{existing[0]}</b> do'konida xodim!", parse_mode="HTML")
+
+        # Xodimni qo'shish
+        cursor.execute("""
+            INSERT INTO employees (shop_id, telegram_id, full_name, role)
+            VALUES (%s, %s, %s, 'staff')
+        """, (shop_id, emp_id, f"Xodim {emp_id}"))
+        conn.commit()
+
+        await state.clear()
+        await message.answer(
+            f"✅ <b>Xodim qo'shildi!</b>\n\n"
+            f"🆔 ID: <code>{emp_id}</code>\n"
+            f"🏪 Do'kon: <b>{shop_name}</b>",
+            reply_markup=owner_menu_kb(), parse_mode="HTML"
+        )
+
+        # Xodimga xabar
+        try:
+            await message.bot.send_message(
+                chat_id=emp_id,
+                text=(
+                    f"🎉 <b>Siz xodim sifatida qo'shildingiz!</b>\n\n"
+                    f"🏪 Do'kon: <b>{shop_name}</b>\n\n"
+                    f"Panelga kirish uchun /start bosing."
+                ),
+                parse_mode="HTML"
+            )
+        except: pass
+
+    except Exception as e:
+        await message.answer(f"❌ Xato: {e}")
+    finally:
+        if conn: conn.close()
+
+
+@user_router.callback_query(F.data == "remove_employee")
+async def remove_employee_cb(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(RemoveEmployee.waiting_id)
+    await callback.message.answer(
+        "❌ O'chirmoqchi bo'lgan xodim ID sini yuboring:",
+        reply_markup=cancel_kb()
+    )
+    await callback.answer()
+
+@user_router.message(RemoveEmployee.waiting_id)
+async def remove_employee_save(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        return await message.answer("❌ Faqat raqam kiriting!")
+
+    emp_id = int(message.text)
+    uid = message.from_user.id
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM shops WHERE owner_id=%s", (uid,))
+        shop = cursor.fetchone()
+        if not shop:
+            return await message.answer("❌ Siz do'kon egasi emassiz.")
+
+        cursor.execute("DELETE FROM employees WHERE shop_id=%s AND telegram_id=%s RETURNING id", (shop[0], emp_id))
+        deleted = cursor.fetchone()
+        conn.commit()
+        await state.clear()
+
+        if deleted:
+            await message.answer(f"✅ Xodim <code>{emp_id}</code> o'chirildi.", reply_markup=owner_menu_kb(), parse_mode="HTML")
+            try:
+                await message.bot.send_message(emp_id, "⚠️ Siz do'kon xodimlari ro'yxatidan o'chirildingiz.")
+            except: pass
+        else:
+            await message.answer("⚠️ Bu ID topilmadi.")
+    finally:
+        if conn: conn.close()
+
+
+@user_router.message(F.text == "🌐 Panelni ochish")
+async def open_panel(message: Message):
+    uid = message.from_user.id
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Egami yoki xodimmi?
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id=%s", (uid,))
+        shop = cursor.fetchone()
+
+        if not shop:
+            cursor.execute("""
+                SELECT s.id, s.name, s.owner_id FROM employees e
+                JOIN shops s ON s.id=e.shop_id WHERE e.telegram_id=%s
+            """, (uid,))
+            row = cursor.fetchone()
+            if row:
+                shop = (row[0], row[1])
+                owner_id = row[2]
+            else:
+                return await message.answer("❌ Sizga tegishli do'kon topilmadi.")
+        else:
+            owner_id = uid
+
+        shop_id, shop_name = shop
+        token = gen_token(owner_id)
+
+        if USE_WEBAPP:
+            url = f"{SHOP_WEB_URL}?token={token}&id={owner_id}"
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=f"🏪 {shop_name}", web_app=WebAppInfo(url=url))
+            ]])
+            await message.answer("🌐 Web panel:", reply_markup=kb)
+        else:
+            await message.answer("⚠️ Web panel hali sozlanmagan.")
+    finally:
+        if conn: conn.close()
+
+
+# ============================================================
+# QARZNI TEKSHIRISH
+# ============================================================
+
+@user_router.callback_query(F.data == "check_debt")
+async def check_debt_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(CheckDebt.waiting_phone)
+    await callback.message.answer(
+        "📞 <b>Telefon raqamingizni kiriting:</b>\nNamuna: <code>+998901234567</code>",
+        reply_markup=cancel_kb(), parse_mode="HTML"
+    )
+    await callback.answer()
+
+@user_router.message(CheckDebt.waiting_phone)
+async def check_debt_result(message: Message, state: FSMContext):
+    await state.clear()
+    phone = message.text.strip()
+    if not phone.startswith('+'): phone = '+' + phone
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT d.amount, d.due_date, s.name
+            FROM debts d JOIN shops s ON s.id=d.shop_id
+            WHERE d.customer_phone=%s AND d.status='unpaid'
+        """, (phone,))
+        debts = cursor.fetchall()
+
+        if not debts:
+            await message.answer("✅ <b>Yaxshi xabar!</b>\n\nBu raqamda faol qarz topilmadi.",
+                reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
+        else:
+            total = sum(float(d[0]) for d in debts)
+            text = f"📋 <b>{phone} raqamidagi qarzlar:</b>\n\n"
+            for amount, due_date, shop_name in debts:
+                text += f"🏪 <b>{shop_name}</b>\n💰 {float(amount):,.0f} so'm\n📅 {due_date}\n────────────────\n"
+            text += f"\n💵 <b>Jami: {total:,.0f} so'm</b>"
+            await message.answer(text, reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
+
+        await message.answer("Bosh menyu:", reply_markup=main_menu_kb())
+    finally:
+        if conn: conn.close()
 
 
 # ============================================================
@@ -294,7 +461,7 @@ async def apply_name(message: Message, state: FSMContext):
 async def apply_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.text.strip())
     await state.set_state(ShopApply.address)
-    await message.answer("3️⃣ Do'kon manzilini kiriting (shahar, ko'cha):")
+    await message.answer("3️⃣ Do'kon joylashuvini kiriting:")
 
 @user_router.message(ShopApply.address)
 async def apply_address(message: Message, state: FSMContext):
@@ -337,19 +504,13 @@ async def apply_confirm_cb(callback: types.CallbackQuery, state: FSMContext):
         text=(
             f"🏪 <b>YANGI DO'KON ARIZASI!</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>{uname}</b>\n"
-            f"🆔 <code>{uid}</code>\n"
-            f"🏪 {data['name']}\n"
-            f"📞 {data['phone']}\n"
-            f"📍 {data['address']}\n"
+            f"👤 {uname}\n🆔 <code>{uid}</code>\n"
+            f"🏪 {data['name']}\n📞 {data['phone']}\n📍 {data['address']}\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         ),
         reply_markup=kb, parse_mode="HTML"
     )
-    await callback.message.edit_text(
-        "✅ <b>Arizangiz yuborildi!</b>\n\nAdmin tez orada ko'rib chiqadi. 🙏",
-        parse_mode="HTML"
-    )
+    await callback.message.edit_text("✅ <b>Arizangiz yuborildi!</b> 🙏", parse_mode="HTML")
     await callback.answer()
 
 
@@ -359,43 +520,33 @@ async def approve_shop(callback: types.CallbackQuery):
     lines = callback.message.text.split('\n')
     shop_data = {}
     for line in lines:
-        if "🏪" in line and "ARIZASI" not in line: shop_data['name'] = line.replace("🏪", "").strip()
-        if "📞" in line: shop_data['phone'] = line.replace("📞", "").strip()
-        if "📍" in line: shop_data['address'] = line.replace("📍", "").strip()
+        if "🏪" in line and "ARIZA" not in line: shop_data['name'] = line.replace("🏪","").strip()
+        if "📞" in line: shop_data['phone'] = line.replace("📞","").strip()
+        if "📍" in line: shop_data['address'] = line.replace("📍","").strip()
 
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO shops (name, owner_id, phone, address) VALUES (%s, %s, %s, %s)",
-            (shop_data.get('name'), uid, shop_data.get('phone'), shop_data.get('address'))
-        )
+        cursor.execute("INSERT INTO shops (name,owner_id,phone,address) VALUES (%s,%s,%s,%s)",
+            (shop_data.get('name','Do\'kon'), uid, shop_data.get('phone',''), shop_data.get('address','')))
         conn.commit()
 
         token = gen_token(uid)
         if USE_WEBAPP:
+            url = f"{SHOP_WEB_URL}?token={token}&id={uid}"
             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="🚀 Maskan Panelini Ochish",
-                    web_app=WebAppInfo(url=f"{SHOP_WEB_URL}?token={token}&id={uid}")
-                )
+                InlineKeyboardButton(text="🚀 Maskan Panelini Ochish", web_app=WebAppInfo(url=url))
             ]])
         else:
             kb = None
 
         await callback.bot.send_message(
             chat_id=uid,
-            text=(
-                f"🎉 <b>Tabriklaymiz!</b>\n\n"
-                f"✅ <b>{shop_data.get('name')}</b> do'koningiz tasdiqlandi!\n\n"
-                f"Maskan panelingizni ochish uchun quyidagi tugmani bosing 👇"
-            ),
+            text=f"🎉 <b>Tabriklaymiz!</b>\n\n✅ Do'koningiz tasdiqlandi!\n\nBotda ishlash uchun /start bosing 👇",
             reply_markup=kb, parse_mode="HTML"
         )
-        await callback.message.edit_text(
-            callback.message.text + "\n\n✅ <b>TASDIQLANDI</b>", parse_mode="HTML"
-        )
+        await callback.message.edit_text(callback.message.text + "\n\n✅ <b>TASDIQLANDI</b>", parse_mode="HTML")
     except Exception as e:
         await callback.answer(f"Xato: {e}", show_alert=True)
     finally:
@@ -406,12 +557,6 @@ async def approve_shop(callback: types.CallbackQuery):
 @user_router.callback_query(F.data.startswith("reject_"))
 async def reject_shop(callback: types.CallbackQuery):
     uid = int(callback.data.split("_")[1])
-    await callback.bot.send_message(
-        chat_id=uid,
-        text="😔 <b>Afsuski...</b>\n\nDo'kon ochish arizangiz rad etildi.",
-        parse_mode="HTML"
-    )
-    await callback.message.edit_text(
-        callback.message.text + "\n\n❌ <b>RAD ETILDI</b>", parse_mode="HTML"
-    )
+    await callback.bot.send_message(uid, "😔 Do'kon ochish arizangiz rad etildi.", parse_mode="HTML")
+    await callback.message.edit_text(callback.message.text + "\n\n❌ <b>RAD ETILDI</b>", parse_mode="HTML")
     await callback.answer()
