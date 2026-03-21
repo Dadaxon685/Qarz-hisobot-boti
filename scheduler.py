@@ -1,88 +1,88 @@
 """
-Kundalik avtomatik eslatmalar.
-O'rnatish: pip install apscheduler
+Kundalik eslatmalar — kuniga 3 marta: 08:00, 13:00, 19:00
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from handlers.connections import get_connection
 
 scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
 
-async def send_daily_reminders(bot: Bot):
-    """Har kuni 09:00 — bugun/ertaga muddati tugaydigan qarzlar"""
+
+async def send_reminders(bot: Bot, time_label: str):
     today = datetime.now().date()
-    tomorrow = today + timedelta(days=1)
-    today_str = today.strftime("%d.%m.%Y")
-    tomorrow_str = tomorrow.strftime("%d.%m.%Y")
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
+
+        # customer_id bor (telefon raqami saqlangan) va to'lanmagan qarzlar
         cursor.execute("""
-            SELECT d.customer_id, d.amount, d.due_date, s.name
-            FROM debts d JOIN shops s ON s.id = d.shop_id
+            SELECT d.customer_id, d.customer_name, d.amount, d.due_date, s.name
+            FROM debts d
+            JOIN shops s ON s.id = d.shop_id
             WHERE d.status = 'unpaid' AND d.customer_id IS NOT NULL
-            AND (d.due_date = %s OR d.due_date = %s)
-        """, (today_str, tomorrow_str))
-        sent = 0
-        for cid, amount, due_date, shop_name in cursor.fetchall():
-            urgency = "🔴 <b>BUGUN</b>" if due_date == today_str else "🟡 <b>ERTAGA</b>"
-            try:
-                await bot.send_message(cid,
-                    f"⏰ <b>QARZ ESLATMASI</b>\n\n{urgency} to'lov muddati!\n\n"
-                    f"🏪 {shop_name}\n💰 {float(amount):,.0f} so'm\n📅 {due_date}\n\nIltimos, o'z vaqtida to'lang! 🙏",
-                    parse_mode="HTML")
-                sent += 1
-            except: pass
-        logging.info(f"Eslatmalar: {sent} ta yuborildi")
-    finally:
-        if conn: conn.close()
-
-async def send_overdue_to_owners(bot: Bot):
-    """Har kuni 18:00 — do'kon egalariga kechikkan qarzlar hisoboti"""
-    today = datetime.now().date()
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT d.customer_id, d.amount, d.due_date, s.name, s.owner_id
-            FROM debts d JOIN shops s ON s.id = d.shop_id
-            WHERE d.status = 'unpaid'
         """)
-        overdue = {}
-        for cid, amount, due_date, shop_name, owner_id in cursor.fetchall():
-            try:
-                db_date = datetime.strptime(due_date, "%d.%m.%Y").date()
-                if db_date < today:
-                    days = (today - db_date).days
-                    if cid:
-                        try:
-                            await bot.send_message(cid,
-                                f"🚨 <b>KECHIKKAN QARZ</b>\n\n🏪 {shop_name}\n"
-                                f"💰 {float(amount):,.0f} so'm\n📅 {due_date}\n⚠️ {days} kun kechikdi",
-                                parse_mode="HTML")
-                        except: pass
-                    if owner_id not in overdue:
-                        overdue[owner_id] = {'count':0, 'total':0, 'shop':shop_name}
-                    overdue[owner_id]['count'] += 1
-                    overdue[owner_id]['total'] += float(amount)
-            except: continue
+        rows = cursor.fetchall()
 
-        for owner_id, info in overdue.items():
+        # Mijoz bo'yicha guruhlash
+        customers = {}
+        for cid, name, amount, due_date, shop_name in rows:
+            if cid not in customers:
+                customers[cid] = {'name': name, 'debts': []}
+            customers[cid]['debts'].append({
+                'amount': float(amount),
+                'due_date': due_date,
+                'shop': shop_name
+            })
+
+        sent = 0
+        for cid, info in customers.items():
             try:
-                await bot.send_message(owner_id,
-                    f"📊 <b>Kechikkan qarzlar</b>\n🏪 {info['shop']}\n"
-                    f"👥 {info['count']} ta • 💰 {info['total']:,.0f} so'm",
-                    parse_mode="HTML")
-            except: pass
+                total = sum(d['amount'] for d in info['debts'])
+                overdue_count = 0
+                lines = ""
+
+                for d in info['debts']:
+                    is_late = False
+                    try:
+                        p = d['due_date'].split('.')
+                        if len(p) == 3:
+                            dd = datetime(int(p[2]), int(p[1]), int(p[0])).date()
+                            is_late = dd < today
+                            if is_late: overdue_count += 1
+                    except: pass
+                    tag = " 🔴 <b>KECHIKDI!</b>" if is_late else ""
+                    lines += f"🏪 {d['shop']}\n💰 {d['amount']:,.0f} so'm | 📅 {d['due_date']}{tag}\n\n"
+
+                if overdue_count:
+                    header = f"🚨 <b>DIQQAT! {overdue_count} ta qarzingiz kechikdi!</b>"
+                else:
+                    header = "⏰ <b>Qarz eslatmasi</b>"
+
+                text = (
+                    f"{header}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{lines}"
+                    f"💵 <b>Jami: {total:,.0f} so'm</b>\n\n"
+                    f"Iltimos, o'z vaqtida to'lang! 🙏"
+                )
+                await bot.send_message(chat_id=cid, text=text, parse_mode="HTML")
+                sent += 1
+            except Exception as e:
+                logging.warning(f"Eslatma yuborilmadi {cid}: {e}")
+
+        logging.info(f"[{time_label}] Eslatmalar: {sent} ta")
+    except Exception as e:
+        logging.error(f"Scheduler xatosi: {e}")
     finally:
         if conn: conn.close()
+
 
 def setup_scheduler(bot: Bot):
-    scheduler.add_job(send_daily_reminders, 'cron', hour=9, minute=0, args=[bot])
-    scheduler.add_job(send_overdue_to_owners, 'cron', hour=18, minute=0, args=[bot])
+    scheduler.add_job(send_reminders, 'cron', hour=8,  minute=0,  args=[bot, "08:00"])
+    scheduler.add_job(send_reminders, 'cron', hour=13, minute=0,  args=[bot, "13:00"])
+    scheduler.add_job(send_reminders, 'cron', hour=19, minute=0,  args=[bot, "19:00"])
     scheduler.start()
-    logging.info("Scheduler ishga tushdi!")
+    logging.info("Scheduler: 08:00, 13:00, 19:00")
