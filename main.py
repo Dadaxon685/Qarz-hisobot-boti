@@ -450,7 +450,14 @@ async def shop_payment(data: PaymentCreate, user=Depends(require_shop)):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT amount, customer_id, customer_name FROM debts WHERE id=%s AND shop_id=%s", (data.debt_id, user["shop_id"]))
+        # shop_id ni bazadan olamiz
+        cursor.execute("SELECT id, name FROM shops WHERE owner_id=%s", (user["owner_id"],))
+        shop_row = cursor.fetchone()
+        if not shop_row:
+            raise HTTPException(status_code=404, detail="Dokon topilmadi")
+        shop_id, shop_name = shop_row
+
+        cursor.execute("SELECT amount, customer_id, customer_name FROM debts WHERE id=%s AND shop_id=%s", (data.debt_id, shop_id))
         res = cursor.fetchone()
         if not res:
             raise HTTPException(status_code=404, detail="Qarz topilmadi")
@@ -462,7 +469,7 @@ async def shop_payment(data: PaymentCreate, user=Depends(require_shop)):
             msg = "Qarz to'liq yopildi"
             await notify_customer(customer_id,
                 f"✅ <b>Qarzingiz yopildi!</b>\n\n"
-                f"🏪 <b>Maskan:</b> {user['shop_name']}\n"
+                f"🏪 <b>Maskan:</b> {shop_name}\n"
                 f"👤 <b>Ism:</b> {customer_name}\n"
                 f"💰 <b>To'liq to'langan:</b> {current:,.0f} so'm\n\n"
                 f"Rahmat! Endi qarzingiz yo'q 🎉"
@@ -473,7 +480,7 @@ async def shop_payment(data: PaymentCreate, user=Depends(require_shop)):
             msg = f"Qoldi: {new_amount:,.0f} so'm"
             await notify_customer(customer_id,
                 f"💰 <b>To'lov qabul qilindi!</b>\n\n"
-                f"🏪 <b>Maskan:</b> {user['shop_name']}\n"
+                f"🏪 <b>Maskan:</b> {shop_name}\n"
                 f"✅ <b>To'langan:</b> {data.amount:,.0f} so'm\n"
                 f"📊 <b>Qolgan qarz:</b> {new_amount:,.0f} so'm\n\n"
                 f"Rahmat! Qolgan qarzni ham o'z vaqtida to'lang 🙏"
