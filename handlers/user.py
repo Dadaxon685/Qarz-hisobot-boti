@@ -201,7 +201,8 @@ async def list_employees(message: Message):
 
         text = "👥 <b>Sizning xodimlaringiz:</b>\n\n"
         for i, (tid, fname, role, added) in enumerate(employees, 1):
-            text += f"{i}. {fname or 'Noma\'lum'} — <code>{tid}</code> ({role})\n"
+            display_name = fname or "Noma'lum"
+            text += f"{i}. {display_name} — <code>{tid}</code> ({role})\n"
 
         text += "\n❌ Xodimni o'chirish uchun uning ID sini yuboring yoki bekor yozing."
 
