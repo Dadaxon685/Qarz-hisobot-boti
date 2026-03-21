@@ -297,15 +297,73 @@ def admin_all_debts(user=Depends(require_admin)):
 
 @app.get("/shop/stats")
 def shop_stats(user=Depends(require_shop)):
+    from datetime import datetime
     conn = get_connection()
     try:
         cursor = conn.cursor()
         shop_id = user["shop_id"]
+        today = datetime.now().strftime("%d.%m.%Y")
+
         cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM debts WHERE shop_id=%s AND status='unpaid'", (shop_id,))
         d = cursor.fetchone()
-        cursor.execute("SELECT COUNT(*) FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL", (shop_id,))
-        overdue = cursor.fetchone()[0]
-        return {"debt_count": d[0], "total_debt": float(d[1]), "overdue_count": overdue}
+
+        # Muddati o'tgan — bugungi sanadan OLDIN yozilgan
+        cursor.execute("SELECT id, due_date FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL", (shop_id,))
+        all_debts = cursor.fetchall()
+
+        overdue_count = 0
+        today_date = datetime.now().date()
+        for _, due_date in all_debts:
+            try:
+                p = due_date.split('.')
+                if len(p) == 3:
+                    dd = datetime(int(p[2]), int(p[1]), int(p[0])).date()
+                    if dd < today_date:
+                        overdue_count += 1
+            except: pass
+
+        return {"debt_count": d[0], "total_debt": float(d[1]), "overdue_count": overdue_count}
+    finally:
+        conn.close()
+
+@app.get("/shop/overdue")
+def shop_overdue_debts(user=Depends(require_shop)):
+    """Muddati o'tgan qarzlar — bugungi sanadan oldingi"""
+    from datetime import datetime
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        shop_id = user["shop_id"]
+        today_date = datetime.now().date()
+
+        cursor.execute("""
+            SELECT id, customer_name, customer_phone, amount, due_date, debt_date
+            FROM debts WHERE shop_id=%s AND status='unpaid' AND due_date IS NOT NULL
+        """, (shop_id,))
+        rows = cursor.fetchall()
+
+        overdue = []
+        for row in rows:
+            try:
+                p = row[4].split('.')
+                if len(p) == 3:
+                    dd = datetime(int(p[2]), int(p[1]), int(p[0])).date()
+                    if dd < today_date:
+                        days_late = (today_date - dd).days
+                        overdue.append({
+                            "id": row[0],
+                            "customer_name": row[1],
+                            "customer_phone": row[2],
+                            "amount": float(row[3]),
+                            "due_date": row[4],
+                            "debt_date": str(row[5]),
+                            "days_late": days_late
+                        })
+            except: pass
+
+        # Eng ko'p kechikkan birinchi
+        overdue.sort(key=lambda x: x['days_late'], reverse=True)
+        return overdue
     finally:
         conn.close()
 
